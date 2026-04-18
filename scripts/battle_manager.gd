@@ -412,7 +412,7 @@ func _on_game_over(winner: String) -> void:
 func _refresh_cell(pos: Vector2i) -> void:
 	var unit := grid_manager.get_unit(pos) as Unit
 	if unit != null:
-		grid_view.set_unit_cell(pos, unit.owner == "player", unit.hp, unit.max_hp)
+		grid_view.set_unit_cell(pos, unit.owner == "player", unit.hp, unit.max_hp, unit.attack)
 		return
 	var castle := unit_manager.get_castle_at(pos)
 	if castle != null:

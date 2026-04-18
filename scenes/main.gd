@@ -217,41 +217,6 @@ func _make_center_info_block(battle_manager: BattleManager) -> Control:
 	return vbox
 
 
-func _rebuild_mana_pool_display(row: HBoxContainer, pool: Dictionary) -> void:
-	for child in row.get_children():
-		child.queue_free()
-
-	const COLORS: Array = ["red", "blue", "green", "white", "black"]
-	const NAMES:  Array = ["赤", "青", "緑", "白", "黒"]
-	const COLS: Array = [
-		Color("#e85555"), Color("#4a9eff"), Color("#48bb78"),
-		Color("#dde8f0"), Color("#8892a4")
-	]
-
-	for i in COLORS.size():
-		var color_key: String = COLORS[i]
-		var count: int        = pool.get(color_key, 0)
-		var col: Color        = COLS[i]
-
-		var vbox := VBoxContainer.new()
-		vbox.add_theme_constant_override("separation", 2)
-
-		var name_lbl := Label.new()
-		name_lbl.text = NAMES[i]
-		name_lbl.add_theme_color_override("font_color", col)
-		name_lbl.add_theme_font_size_override("font_size", 8)
-		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		vbox.add_child(name_lbl)
-
-		var count_lbl := Label.new()
-		count_lbl.text = str(count)
-		count_lbl.add_theme_color_override("font_color", col if count > 0 else Color(col.r, col.g, col.b, 0.3))
-		count_lbl.add_theme_font_size_override("font_size", 13)
-		count_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		vbox.add_child(count_lbl)
-
-		row.add_child(vbox)
-
 
 func _place_grid(vbox: VBoxContainer, grid_view: GridView, battle_manager: BattleManager = null) -> void:
 	# Main エリア（3カラム）を TopBar の直後に追加
@@ -792,7 +757,7 @@ func _show_castle(grid_view: GridView, castle: Castle) -> void:
 
 
 func _show_unit(grid_view: GridView, unit: Unit) -> void:
-	grid_view.set_unit_cell(unit.position, unit.owner == "player", unit.hp, unit.max_hp)
+	grid_view.set_unit_cell(unit.position, unit.owner == "player", unit.hp, unit.max_hp, unit.attack)
 
 
 # ---------------------------------------------------------------------------

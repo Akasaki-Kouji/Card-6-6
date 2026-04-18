@@ -28,12 +28,14 @@ const C_BLUE   := Color("#4a9eff")
 # ---------------------------------------------------------------------------
 # プロパティ
 # ---------------------------------------------------------------------------
-var _buttons:   Dictionary = {}   # Vector2i → Button
-var _bg_panels: Dictionary = {}   # Vector2i → Panel（背景・ボーダー）
-var _hl_rects:  Dictionary = {}   # Vector2i → ColorRect（ハイライト）
-var _labels:    Dictionary = {}   # Vector2i → Label（コンテンツ）
-var _hp_fills:  Dictionary = {}   # Vector2i → ColorRect（HPバー塗り）
-var _hp_bgs:    Dictionary = {}   # Vector2i → ColorRect（HPバー背景）
+var _buttons:    Dictionary = {}   # Vector2i → Button
+var _bg_panels:  Dictionary = {}   # Vector2i → Panel（背景・ボーダー）
+var _hl_rects:   Dictionary = {}   # Vector2i → ColorRect（ハイライト）
+var _labels:     Dictionary = {}   # Vector2i → Label（中央アイコン）
+var _atk_labels: Dictionary = {}   # Vector2i → Label（攻撃力）
+var _hp_labels:  Dictionary = {}   # Vector2i → Label（HP数値）
+var _hp_fills:   Dictionary = {}   # Vector2i → ColorRect（HPバー塗り）
+var _hp_bgs:     Dictionary = {}   # Vector2i → ColorRect（HPバー背景）
 
 # ---------------------------------------------------------------------------
 # 初期化
@@ -97,17 +99,47 @@ func _build_cell(parent: GridContainer, pos: Vector2i) -> void:
 	coord.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn.add_child(coord)
 
-	# ④ コンテンツラベル（中央）
+	# ④ 中央ラベル（ユニット所属）
 	var lbl := Label.new()
 	lbl.anchor_right  = 1.0
-	lbl.anchor_bottom = 0.82
+	lbl.anchor_bottom = 0.72
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	lbl.add_theme_color_override("font_color", C_TEXT)
-	lbl.add_theme_font_size_override("font_size", 11)
+	lbl.add_theme_font_size_override("font_size", 13)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn.add_child(lbl)
 	_labels[pos] = lbl
+
+	# ④-a ATKラベル（左下）
+	var atk_lbl := Label.new()
+	atk_lbl.anchor_left   = 0.0
+	atk_lbl.anchor_right  = 0.5
+	atk_lbl.anchor_top    = 0.68
+	atk_lbl.anchor_bottom = 0.88
+	atk_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	atk_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	atk_lbl.add_theme_color_override("font_color", C_RED)
+	atk_lbl.add_theme_font_size_override("font_size", 11)
+	atk_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	atk_lbl.visible = false
+	btn.add_child(atk_lbl)
+	_atk_labels[pos] = atk_lbl
+
+	# ④-b HPラベル（右下）
+	var hp_lbl := Label.new()
+	hp_lbl.anchor_left   = 0.5
+	hp_lbl.anchor_right  = 1.0
+	hp_lbl.anchor_top    = 0.68
+	hp_lbl.anchor_bottom = 0.88
+	hp_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hp_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	hp_lbl.add_theme_color_override("font_color", C_BLUE)
+	hp_lbl.add_theme_font_size_override("font_size", 11)
+	hp_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hp_lbl.visible = false
+	btn.add_child(hp_lbl)
+	_hp_labels[pos] = hp_lbl
 
 	# ⑤ HPバー背景
 	var hp_bg := ColorRect.new()
@@ -145,12 +177,25 @@ func _build_cell(parent: GridContainer, pos: Vector2i) -> void:
 # ---------------------------------------------------------------------------
 
 ## ユニットを表示する
-func set_unit_cell(pos: Vector2i, is_player: bool, hp: int, max_hp: int) -> void:
+func set_unit_cell(pos: Vector2i, is_player: bool, hp: int, max_hp: int, attack: int = 0) -> void:
 	if not _labels.has(pos):
 		return
-	var owner_label := "P" if is_player else "E"
-	_labels[pos].text = owner_label
-	_labels[pos].add_theme_color_override("font_color", C_BLUE if is_player else C_RED)
+	var col := C_BLUE if is_player else C_RED
+	_labels[pos].text = "自軍" if is_player else "敵軍"
+	_labels[pos].add_theme_color_override("font_color", col)
+
+	var atk_lbl: Label = _atk_labels[pos]
+	atk_lbl.text    = "⚔%d" % attack
+	atk_lbl.visible = true
+	atk_lbl.offset_left  = 4.0
+	atk_lbl.offset_right = 0.0
+
+	var hp_lbl: Label = _hp_labels[pos]
+	hp_lbl.text    = "♥%d" % hp
+	hp_lbl.add_theme_color_override("font_color", col)
+	hp_lbl.visible = true
+	hp_lbl.offset_right = -4.0
+
 	_update_hp_bar(pos, hp, max_hp, is_player)
 	_update_bg_style(pos, "player_unit" if is_player else "enemy_unit")
 
@@ -161,6 +206,8 @@ func set_castle_cell(pos: Vector2i, is_player: bool, hp: int) -> void:
 		return
 	_labels[pos].text = "自城" if is_player else "敵城"
 	_labels[pos].add_theme_color_override("font_color", C_BLUE if is_player else C_RED)
+	(_atk_labels[pos] as Label).visible = false
+	(_hp_labels[pos]  as Label).visible = false
 	_hp_bgs[pos].visible = false
 	_update_bg_style(pos, "castle_player" if is_player else "castle_enemy")
 
@@ -171,6 +218,8 @@ func clear_cell(pos: Vector2i) -> void:
 		return
 	_labels[pos].text = ""
 	_labels[pos].add_theme_color_override("font_color", C_TEXT)
+	(_atk_labels[pos] as Label).visible = false
+	(_hp_labels[pos]  as Label).visible = false
 	_hp_bgs[pos].visible = false
 	_update_bg_style(pos, _get_zone_type(pos))
 
