@@ -7,6 +7,10 @@ extends Node
 
 ## 手札が変化したとき（ドロー・使用後）に発火する
 signal hand_changed(hand: Array[Card])
+## デッキ残枚数が変化したとき
+signal deck_count_changed(remaining: int)
+## デッキが空になったとき
+signal deck_emptied
 
 # ---------------------------------------------------------------------------
 # プロパティ
@@ -25,6 +29,7 @@ func _ready() -> void:
 func draw_initial_hand(count: int = 5) -> void:
 	for i in count:
 		draw_card()
+	deck_count_changed.emit(deck.size())
 
 
 func _build_deck() -> void:
@@ -45,12 +50,16 @@ func _build_deck() -> void:
 func draw_card() -> Card:
 	if deck.is_empty():
 		print("CardManager: デッキが空のためドロー不可")
+		deck_emptied.emit()
 		return null
 
 	var card: Card = deck.pop_back()
 	hand.append(card)
 	hand_changed.emit(hand)
-	print("CardManager: ドロー %s（手札 %d枚）" % [card, hand.size()])
+	deck_count_changed.emit(deck.size())
+	if deck.is_empty():
+		deck_emptied.emit()
+	print("CardManager: ドロー %s（手札 %d枚 デッキ残 %d枚）" % [card, hand.size(), deck.size()])
 	return card
 
 

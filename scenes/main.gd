@@ -55,7 +55,7 @@ func _ready() -> void:
 
 	# ---- 各エリアに UI ノードを配置 ----
 	_place_grid(root_vbox, grid_view)
-	_place_hand(root_vbox, hand_view)
+	_place_hand(root_vbox, hand_view, card_manager)
 	_place_topbar(root_vbox, battle_manager, player_castle, enemy_castle)
 	_place_right_panel(root_vbox, battle_manager)
 
@@ -265,13 +265,11 @@ func _place_grid(vbox: VBoxContainer, grid_view: GridView) -> void:
 	main_hbox.add_child(right)
 
 
-func _place_hand(vbox: VBoxContainer, hand_view: HandView) -> void:
-	# 手札エリア：下部固定
+func _place_hand(vbox: VBoxContainer, hand_view: HandView, card_manager: CardManager) -> void:
 	var hand_panel := _make_panel(BG2, Color.TRANSPARENT, Color(1, 1, 1, 0.08))
 	hand_panel.name = "HandPanel"
 	hand_panel.custom_minimum_size.y = 160
 
-	# 上ボーダーライン
 	var sep := ColorRect.new()
 	sep.color = BORDER2
 	sep.custom_minimum_size.y = 1
@@ -279,13 +277,34 @@ func _place_hand(vbox: VBoxContainer, hand_view: HandView) -> void:
 
 	var inner := VBoxContainer.new()
 	inner.add_theme_constant_override("separation", 6)
+
+	# ヘッダー行：手札ラベル ＋ デッキ残枚数
+	var header_row := _make_hbox(8)
+	header_row.alignment = BoxContainer.ALIGNMENT_CENTER
+
 	var header := _make_label("手　札", C_TEXT2, 11)
-	inner.add_child(header)
+	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header_row.add_child(header)
+
+	var deck_lbl := _make_label("デッキ %d枚" % card_manager.deck.size(), C_TEXT3, 9)
+	deck_lbl.name = "DeckCountLabel"
+	header_row.add_child(deck_lbl)
+
+	inner.add_child(header_row)
 	hand_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	inner.add_child(hand_view)
 
 	hand_panel.add_child(_make_vbox_with(sep, _make_margin(inner, 10)))
 	vbox.add_child(hand_panel)
+
+	# デッキ残枚数の更新
+	card_manager.deck_count_changed.connect(func(remaining: int) -> void:
+		deck_lbl.text = "デッキ %d枚" % remaining
+	)
+	card_manager.deck_emptied.connect(func() -> void:
+		deck_lbl.text = "デッキ切れ"
+		deck_lbl.add_theme_color_override("font_color", C_RED)
+	)
 
 
 func _place_right_panel(vbox: VBoxContainer, battle_manager: BattleManager) -> void:
