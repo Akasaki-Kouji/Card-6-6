@@ -43,6 +43,11 @@ func _ready() -> void:
 
 
 func _build_grid() -> void:
+	# GridView 自身のサイズを明示してCenterContainerが正しく中央寄せできるようにする
+	var total_w: float = CELL_W * COLS + CELL_GAP * (COLS - 1)
+	var total_h: float = CELL_H * ROWS + CELL_GAP * (ROWS - 1)
+	custom_minimum_size = Vector2(total_w, total_h)
+
 	var gc := GridContainer.new()
 	gc.columns = COLS
 	gc.add_theme_constant_override("h_separation", CELL_GAP)
