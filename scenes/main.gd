@@ -87,7 +87,7 @@ func _build_root_layout() -> VBoxContainer:
 func _place_topbar(vbox: VBoxContainer, battle_manager: BattleManager,
 		player_castle: Castle, enemy_castle: Castle) -> void:
 	var bar := _make_panel(BG2, Color.TRANSPARENT, Color(1, 1, 1, 0.08))
-	bar.custom_minimum_size.y = 64
+	bar.custom_minimum_size.y = 80
 
 	# 下部ボーダー
 	var sep := ColorRect.new()
@@ -143,38 +143,38 @@ func _make_castle_hp_block(
 	label_text: String, hp: int, max_hp: int, color: Color, align_left: bool
 ) -> Control:
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 3)
+	vbox.add_theme_constant_override("separation", 4)
 
-	var lbl := _make_label(label_text, color, 10)
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if align_left \
-		else HORIZONTAL_ALIGNMENT_RIGHT
-	vbox.add_child(lbl)
+	# 城名 + HP を1行で表示
+	var header_row := _make_hbox(6)
+	header_row.alignment = BoxContainer.ALIGNMENT_BEGIN if align_left \
+		else BoxContainer.ALIGNMENT_END
 
-	var hp_lbl := _make_label("%d / %d" % [hp, max_hp], Color(color.r, color.g, color.b, 0.8), 10)
+	var name_lbl := _make_label(label_text, color, 11)
+	header_row.add_child(name_lbl)
+
+	var hp_lbl := _make_label("%d / %d" % [hp, max_hp], Color(color.r, color.g, color.b, 0.7), 10)
 	hp_lbl.name = "HpLabel"
-	hp_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if align_left \
-		else HORIZONTAL_ALIGNMENT_RIGHT
-	vbox.add_child(hp_lbl)
+	header_row.add_child(hp_lbl)
+	vbox.add_child(header_row)
 
-	# HPバー
+	# HPバー（細め）
 	var bar_bg := PanelContainer.new()
-	bar_bg.custom_minimum_size = Vector2(0.0, 6.0)
+	bar_bg.custom_minimum_size = Vector2(0.0, 5.0)
 	bar_bg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var bar_style := StyleBoxFlat.new()
-	bar_style.bg_color = Color(color.r, color.g, color.b, 0.15)
-	bar_style.set_corner_radius_all(3)
+	bar_style.bg_color = Color(color.r, color.g, color.b, 0.12)
+	bar_style.set_corner_radius_all(2)
 	bar_bg.add_theme_stylebox_override("panel", bar_style)
 
 	var bar_inner := HBoxContainer.new()
 	bar_inner.add_theme_constant_override("separation", 0)
-
 	var fill := ColorRect.new()
 	fill.name = "Fill"
-	fill.color = Color(color.r, color.g, color.b, 0.7)
+	fill.color = Color(color.r, color.g, color.b, 0.65)
 	fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	fill.size_flags_stretch_ratio = float(hp) / float(max_hp)
 	bar_inner.add_child(fill)
-
 	bar_bg.add_child(bar_inner)
 	vbox.add_child(bar_bg)
 
@@ -198,13 +198,6 @@ func _make_center_info_block(battle_manager: BattleManager) -> Control:
 	turn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(turn_lbl)
 
-	# マナプール表示行（5色）
-	var mana_row := _make_hbox(6)
-	mana_row.name = "ManaRow"
-	mana_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_rebuild_mana_pool_display(mana_row, battle_manager.mana_pool)
-	vbox.add_child(mana_row)
-
 	# 敵ターン中オーバーレイ
 	var enemy_overlay := _make_label("⏳ 相手のターン処理中…", C_TEXT3, 9)
 	enemy_overlay.name = "EnemyOverlay"
@@ -219,10 +212,6 @@ func _make_center_info_block(battle_manager: BattleManager) -> Control:
 		phase_lbl.add_theme_color_override("font_color", C_BLUE if is_player else C_RED)
 		turn_lbl.text = "ターン %d" % turn
 		enemy_overlay.visible = not is_player
-		mana_row.modulate = Color.WHITE if is_player else Color(1, 1, 1, 0.3)
-	)
-	battle_manager.mana_pool_changed.connect(func(pool: Dictionary) -> void:
-		_rebuild_mana_pool_display(mana_row, pool)
 	)
 
 	return vbox
@@ -272,18 +261,49 @@ func _place_grid(vbox: VBoxContainer, grid_view: GridView, battle_manager: Battl
 	main_hbox.add_theme_constant_override("separation", 0)
 	vbox.add_child(main_hbox)
 
-	# 左サイドパネル（バトルログ）
+	# 左サイドパネル（バトルログ・折りたたみ可能）
 	var left := _make_panel(BG2, Color.TRANSPARENT, BORDER)
 	left.name = "LeftPanel"
-	left.custom_minimum_size.x = 180
+	left.custom_minimum_size.x = 220
 	left.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
-	var log_inner := VBoxContainer.new()
-	log_inner.add_theme_constant_override("separation", 4)
-	log_inner.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# パネル内部：トグル列 ＋ ログ列 の横並び
+	var left_hbox := HBoxContainer.new()
+	left_hbox.add_theme_constant_override("separation", 0)
+	left_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+
+	# トグルボタン列（常時表示・28px固定）
+	var toggle_col := VBoxContainer.new()
+	toggle_col.custom_minimum_size.x = 28
+	toggle_col.add_theme_constant_override("separation", 0)
+
+	var toggle_btn := Button.new()
+	toggle_btn.text = "◀"
+	toggle_btn.custom_minimum_size = Vector2(28.0, 28.0)
+	toggle_btn.focus_mode = Control.FOCUS_NONE
+	toggle_btn.add_theme_font_size_override("font_size", 10)
+	var toggle_style := StyleBoxFlat.new()
+	toggle_style.bg_color = Color(1, 1, 1, 0.04)
+	toggle_style.set_border_width_all(0)
+	toggle_btn.add_theme_stylebox_override("normal", toggle_style)
+	toggle_btn.add_theme_stylebox_override("hover",  toggle_style)
+	toggle_btn.add_theme_color_override("font_color", C_TEXT3)
+	toggle_col.add_child(toggle_btn)
+
+	var toggle_spacer := Control.new()
+	toggle_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	toggle_col.add_child(toggle_spacer)
+	left_hbox.add_child(toggle_col)
+
+	# ログコンテンツ列（折りたたみ対象）
+	var log_content := VBoxContainer.new()
+	log_content.name = "LogContent"
+	log_content.add_theme_constant_override("separation", 4)
+	log_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	log_content.size_flags_vertical   = Control.SIZE_EXPAND_FILL
 
 	var log_title := _make_label("BATTLE LOG", C_TEXT3, 10)
-	log_inner.add_child(log_title)
+	log_content.add_child(log_title)
 
 	var log_scroll := ScrollContainer.new()
 	log_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -294,22 +314,28 @@ func _place_grid(vbox: VBoxContainer, grid_view: GridView, battle_manager: Battl
 	log_list.add_theme_constant_override("separation", 2)
 	log_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	log_scroll.add_child(log_list)
-	log_inner.add_child(log_scroll)
+	log_content.add_child(log_scroll)
+	left_hbox.add_child(_make_margin(log_content, 8))
 
-	left.add_child(_make_margin(log_inner, 12))
+	left.add_child(left_hbox)
 	main_hbox.add_child(left)
 
-	# battle_log シグナルはここで接続（battle_manager は引数で受け取れないため後で接続）
-	# battle_log シグナルを接続
+	# トグル動作
+	var log_expanded := true
+	toggle_btn.pressed.connect(func() -> void:
+		log_expanded = not log_expanded
+		log_content.visible        = log_expanded
+		left.custom_minimum_size.x = 220 if log_expanded else 30
+		toggle_btn.text            = "◀" if log_expanded else "▶"
+	)
+
 	if battle_manager != null:
 		battle_manager.battle_log.connect(func(msg: String) -> void:
 			var entry := _make_label(msg, C_TEXT2, 9)
 			entry.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			log_list.add_child(entry)
-			# 最大30件保持
 			if log_list.get_child_count() > 30:
 				log_list.get_child(0).queue_free()
-			# 最下部にスクロール
 			await get_tree().process_frame
 			log_scroll.scroll_vertical = int(log_scroll.get_v_scroll_bar().max_value)
 		)
@@ -325,7 +351,7 @@ func _place_grid(vbox: VBoxContainer, grid_view: GridView, battle_manager: Battl
 	# 右サイドパネル（アクション — 後のステップで実装）
 	var right := _make_panel(BG2, Color.TRANSPARENT, BORDER)
 	right.name = "RightPanel"
-	right.custom_minimum_size.x = 170
+	right.custom_minimum_size.x = 340
 	right.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var right_label := _make_label("ACTIONS", C_TEXT3, 10)
 	right.add_child(_make_margin(right_label, 12))
@@ -335,7 +361,7 @@ func _place_grid(vbox: VBoxContainer, grid_view: GridView, battle_manager: Battl
 func _place_hand(vbox: VBoxContainer, hand_view: HandView, card_manager: CardManager) -> void:
 	var hand_panel := _make_panel(BG2, Color.TRANSPARENT, Color(1, 1, 1, 0.08))
 	hand_panel.name = "HandPanel"
-	hand_panel.custom_minimum_size.y = 160
+	hand_panel.custom_minimum_size.y = 272
 
 	var sep := ColorRect.new()
 	sep.color = BORDER2
@@ -398,6 +424,29 @@ func _place_right_panel(vbox: VBoxContainer, battle_manager: BattleManager) -> v
 	charge_sep.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	charge_sep.visible = false
 	inner.add_child(charge_sep)
+
+	# ── マナプール表示 ──
+	var mana_section := VBoxContainer.new()
+	mana_section.add_theme_constant_override("separation", 6)
+
+	var mana_title := _make_label("MANA POOL", C_TEXT3, 12)
+	mana_section.add_child(mana_title)
+
+	var mana_row := _make_hbox(8)
+	mana_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mana_section.add_child(mana_row)
+	_rebuild_mana_pool_display_panel(mana_row, battle_manager.mana_pool)
+
+	var mana_sep := ColorRect.new()
+	mana_sep.color = Color(1, 1, 1, 0.08)
+	mana_sep.custom_minimum_size.y = 1
+	mana_sep.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mana_section.add_child(mana_sep)
+	inner.add_child(mana_section)
+
+	battle_manager.mana_pool_changed.connect(func(pool: Dictionary) -> void:
+		_rebuild_mana_pool_display_panel(mana_row, pool)
+	)
 
 	# ── ユニット情報ブロック ──
 	var unit_section := VBoxContainer.new()
@@ -478,11 +527,10 @@ func _make_charge_section(battle_manager: BattleManager) -> VBoxContainer:
 	var title := _make_label("▶ マナチャージ", C_GOLD, 10)
 	vbox.add_child(title)
 
-	# 5色ボタン（2行：3+2）
-	var row1 := _make_hbox(4)
-	row1.name = "ChargeRow1"
-	var row2 := _make_hbox(4)
-	row2.name = "ChargeRow2"
+	# 5色ボタン（1行）
+	var row := _make_hbox(4)
+	row.name = "ChargeRow1"
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	for i in _MANA_COLORS.size():
 		var color_key: String = _MANA_COLORS[i]
@@ -490,11 +538,13 @@ func _make_charge_section(battle_manager: BattleManager) -> VBoxContainer:
 
 		var btn_vbox := VBoxContainer.new()
 		btn_vbox.add_theme_constant_override("separation", 2)
+		btn_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 		var btn := Button.new()
-		btn.text               = _MANA_NAMES[i]
-		btn.custom_minimum_size = Vector2(40.0, 36.0)
-		btn.focus_mode         = Control.FOCUS_NONE
+		btn.text              = _MANA_NAMES[i]
+		btn.custom_minimum_size = Vector2(0.0, 46.0)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.focus_mode        = Control.FOCUS_NONE
 
 		var bs := StyleBoxFlat.new()
 		bs.bg_color     = Color(col.r, col.g, col.b, 0.12)
@@ -504,12 +554,12 @@ func _make_charge_section(battle_manager: BattleManager) -> VBoxContainer:
 		btn.add_theme_stylebox_override("normal", bs)
 
 		var bs_hover := bs.duplicate() as StyleBoxFlat
-		bs_hover.bg_color = Color(col.r, col.g, col.b, 0.28)
+		bs_hover.bg_color     = Color(col.r, col.g, col.b, 0.28)
 		bs_hover.border_color = Color(col.r, col.g, col.b, 0.9)
 		btn.add_theme_stylebox_override("hover", bs_hover)
 
 		btn.add_theme_color_override("font_color", col)
-		btn.add_theme_font_size_override("font_size", 12)
+		btn.add_theme_font_size_override("font_size", 14)
 		btn.pressed.connect(battle_manager.charge_mana.bind(color_key))
 		btn_vbox.add_child(btn)
 
@@ -519,13 +569,9 @@ func _make_charge_section(battle_manager: BattleManager) -> VBoxContainer:
 		cnt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		btn_vbox.add_child(cnt)
 
-		if i < 3:
-			row1.add_child(btn_vbox)
-		else:
-			row2.add_child(btn_vbox)
+		row.add_child(btn_vbox)
 
-	vbox.add_child(row1)
-	vbox.add_child(row2)
+	vbox.add_child(row)
 	return vbox
 
 
@@ -535,6 +581,52 @@ func _refresh_charge_counts(charge_section: VBoxContainer, pool: Dictionary) -> 
 		var cnt: Label = charge_section.find_child("cnt_%s" % color_key, true, false) as Label
 		if cnt != null:
 			cnt.text = "%d所持" % pool.get(color_key, 0)
+
+
+func _rebuild_mana_pool_display_panel(row: HBoxContainer, pool: Dictionary) -> void:
+	for child in row.get_children():
+		child.queue_free()
+
+	for i in _MANA_COLORS.size():
+		var color_key: String = _MANA_COLORS[i]
+		var col: Color        = _MANA_COLS[i]
+		var count: int        = pool.get(color_key, 0)
+
+		var block := VBoxContainer.new()
+		block.add_theme_constant_override("separation", 2)
+		block.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+		# 色付きボックス
+		var gem := Panel.new()
+		gem.custom_minimum_size = Vector2(36.0, 36.0)
+		gem.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		var s := StyleBoxFlat.new()
+		s.bg_color     = Color(col.r, col.g, col.b, 0.25 if count > 0 else 0.07)
+		s.border_color = Color(col.r, col.g, col.b, 0.7  if count > 0 else 0.2)
+		s.set_border_width_all(1)
+		s.set_corner_radius_all(4)
+		gem.add_theme_stylebox_override("panel", s)
+
+		# 数字を gem の中央に
+		var num := Label.new()
+		num.text = str(count)
+		num.add_theme_color_override("font_color", col if count > 0 else Color(col.r, col.g, col.b, 0.3))
+		num.add_theme_font_size_override("font_size", 15)
+		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		num.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+		num.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		gem.add_child(num)
+
+		# 色名ラベル
+		var name_lbl := Label.new()
+		name_lbl.text = _MANA_NAMES[i]
+		name_lbl.add_theme_color_override("font_color", Color(col.r, col.g, col.b, 0.6))
+		name_lbl.add_theme_font_size_override("font_size", 10)
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+		block.add_child(gem)
+		block.add_child(name_lbl)
+		row.add_child(block)
 
 
 func _make_unit_detail_block() -> VBoxContainer:

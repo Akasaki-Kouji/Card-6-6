@@ -11,9 +11,9 @@ signal cell_clicked(pos: Vector2i)
 # ---------------------------------------------------------------------------
 const ROWS     := 6
 const COLS     := 6
-const CELL_W   := 72.0
-const CELL_H   := 72.0
-const CELL_GAP := 4
+const CELL_W   := 96.0
+const CELL_H   := 96.0
+const CELL_GAP := 6
 
 # カラーパレット
 const C_BG2    := Color("#161b26")

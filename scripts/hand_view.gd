@@ -11,9 +11,9 @@ signal card_selected(card: Card)
 # ---------------------------------------------------------------------------
 # 定数
 # ---------------------------------------------------------------------------
-const CARD_W    := 88.0
-const CARD_H    := 124.0
-const CARD_GAP  := 8
+const CARD_W    := 136.0
+const CARD_H    := 200.0
+const CARD_GAP  := 10
 
 # カラーパレット
 const C_BG2     := Color("#161b26")
@@ -121,7 +121,7 @@ func _make_card_header(card: Card) -> Control:
 	var lbl := Label.new()
 	lbl.text = card.card_name
 	lbl.add_theme_color_override("font_color", C_TEXT)
-	lbl.add_theme_font_size_override("font_size", 10)
+	lbl.add_theme_font_size_override("font_size", 12)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	mc.add_child(lbl)
@@ -130,7 +130,7 @@ func _make_card_header(card: Card) -> Control:
 
 func _make_art_area(card: Card) -> Control:
 	var art := ColorRect.new()
-	art.custom_minimum_size = Vector2(0.0, 48.0)
+	art.custom_minimum_size = Vector2(0.0, 64.0)
 	art.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# オーナーカラーに合わせた薄い背景
@@ -142,7 +142,7 @@ func _make_art_area(card: Card) -> Control:
 	var icon := Label.new()
 	icon.text = _card_icon(card)
 	icon.add_theme_color_override("font_color", Color(base.r, base.g, base.b, 0.5))
-	icon.add_theme_font_size_override("font_size", 24)
+	icon.add_theme_font_size_override("font_size", 32)
 	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	icon.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -186,7 +186,7 @@ func _make_stat_cell(key: String, val: String, color: Color) -> Control:
 	var key_lbl := Label.new()
 	key_lbl.text = key
 	key_lbl.add_theme_color_override("font_color", C_TEXT3)
-	key_lbl.add_theme_font_size_override("font_size", 7)
+	key_lbl.add_theme_font_size_override("font_size", 9)
 	key_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	key_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(key_lbl)
@@ -194,7 +194,7 @@ func _make_stat_cell(key: String, val: String, color: Color) -> Control:
 	var val_lbl := Label.new()
 	val_lbl.text = val
 	val_lbl.add_theme_color_override("font_color", color)
-	val_lbl.add_theme_font_size_override("font_size", 11)
+	val_lbl.add_theme_font_size_override("font_size", 14)
 	val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	val_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(val_lbl)
