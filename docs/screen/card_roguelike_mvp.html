@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>カードローグライク 6×6 MVP</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Cinzel:wght@600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117;
+    --bg2: #161b26;
+    --bg3: #1e2535;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.15);
+    --text: #e8eaf0;
+    --text2: #8892a4;
+    --text3: #4a5568;
+    --red: #e85555;
+    --red-bg: rgba(232,85,85,0.12);
+    --red-border: rgba(232,85,85,0.35);
+    --blue: #4a9eff;
+    --blue-bg: rgba(74,158,255,0.12);
+    --blue-border: rgba(74,158,255,0.35);
+    --purple: #9f7aea;
+    --purple-bg: rgba(159,122,234,0.15);
+    --purple-border: rgba(159,122,234,0.4);
+    --green: #48bb78;
+    --green-bg: rgba(72,187,120,0.12);
+    --green-border: rgba(72,187,120,0.4);
+    --gold: #f6c344;
+    --amber: #f6ad55;
+    --mana: #9f7aea;
+    --r: 6px;
+    --r2: 10px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-image:
+      radial-gradient(ellipse 60% 40% at 20% 10%, rgba(159,122,234,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 30% at 80% 90%, rgba(74,158,255,0.05) 0%, transparent 60%);
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+
+  .castle-block {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--r2);
+    padding: 10px 16px;
+    min-width: 200px;
+  }
+  .castle-block.enemy { border-color: var(--red-border); }
+  .castle-block.player { border-color: var(--blue-border); }
+
+  .castle-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .castle-icon.enemy { background: var(--red-bg); }
+  .castle-icon.player { background: var(--blue-bg); }
+
+  .castle-meta { flex: 1; }
+  .castle-label { font-size: 10px; color: var(--text2); letter-spacing: 0.08em; font-weight: 500; margin-bottom: 2px; }
+  .castle-hp-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+  .castle-hp-now { font-size: 20px; font-weight: 700; line-height: 1; }
+  .castle-hp-now.enemy { color: var(--red); }
+  .castle-hp-now.player { color: var(--blue); }
+  .castle-hp-max { font-size: 12px; color: var(--text3); }
+  .hp-bar { height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+  .hp-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+  .hp-fill.enemy { background: linear-gradient(90deg, #c0392b, var(--red)); }
+  .hp-fill.player { background: linear-gradient(90deg, #1a6fc4, var(--blue)); }
+
+  /* center turn panel */
+  .turn-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .game-title {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .turn-display {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .turn-num-wrap {
+    text-align: center;
+  }
+  .turn-label { font-size: 10px; color: var(--text2); letter-spacing: 0.06em; }
+  .turn-num { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1; }
+  .phase-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    background: var(--purple-bg);
+    border: 1px solid var(--purple-border);
+    color: var(--purple);
+  }
+  .mana-section { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .mana-label { font-size: 10px; color: var(--text2); }
+  .mana-crystals { display: flex; gap: 3px; }
+  .mana-c {
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.1);
+    transition: background 0.2s;
+  }
+  .mana-c.on {
+    background: var(--mana);
+    border-color: rgba(159,122,234,0.6);
+    box-shadow: 0 0 6px rgba(159,122,234,0.5);
+  }
+
+  /* ── MAIN LAYOUT ── */
+  .main {
+    display: flex;
+    flex: 1;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  /* ── SIDE LOG ── */
+  .side-log {
+    width: 170px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--r2);
+    padding: 12px;
+  }
+  .panel-title {
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 0.1em;
+    font-weight: 500;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+  .log-entry {
+    font-size: 11px;
+    color: var(--text2);
+    line-height: 1.7;
+    padding: 3px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .log-entry:last-child { border-bottom: none; }
+  .log-entry .log-tag {
+    display: inline-block;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-right: 4px;
+    font-weight: 500;
+  }
+  .log-tag.move { background: var(--green-bg); color: var(--green); }
+  .log-tag.atk { background: var(--red-bg); color: var(--red); }
+  .log-tag.summon { background: var(--purple-bg); color: var(--purple); }
+  .log-tag.turn { background: rgba(246,195,68,0.15); color: var(--gold); }
+
+  /* ── BATTLEFIELD ── */
+  .battlefield-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .zone-label {
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    align-self: stretch;
+    text-align: center;
+  }
+  .zone-label.enemy { color: rgba(232,85,85,0.5); }
+  .zone-label.player { color: rgba(74,158,255,0.5); }
+
+  .grid-outer {
+    width: 100%;
+    max-width: 500px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
+  }
+
+  .cell {
+    aspect-ratio: 1;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    overflow: hidden;
+  }
+  .cell:hover { border-color: var(--border2); }
+  .cell.castle-enemy {
+    background: var(--red-bg);
+    border-color: var(--red-border);
+  }
+  .cell.castle-player {
+    background: var(--blue-bg);
+    border-color: var(--blue-border);
+  }
+  .cell.deploy-zone { background: rgba(74,158,255,0.04); }
+  .cell.enemy-zone { background: rgba(232,85,85,0.03); }
+  .cell.selected {
+    border-color: var(--purple);
+    border-width: 2px;
+    background: var(--purple-bg);
+    box-shadow: 0 0 12px rgba(159,122,234,0.25);
+  }
+  .cell.moveable {
+    border: 1.5px dashed var(--green);
+    background: var(--green-bg);
+  }
+  .cell.attackable {
+    border: 1.5px dashed var(--red);
+    background: var(--red-bg);
+    animation: pulse-red 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse-red {
+    0%, 100% { background: var(--red-bg); }
+    50% { background: rgba(232,85,85,0.22); }
+  }
+
+  .coord {
+    position: absolute;
+    top: 2px; left: 3px;
+    font-size: 8px;
+    color: var(--text3);
+    font-family: monospace;
+    pointer-events: none;
+  }
+
+  .unit-wrap {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 3px;
+    position: relative;
+  }
+  .unit-icon { font-size: 18px; line-height: 1; }
+  .unit-hp-bar {
+    position: absolute;
+    bottom: 3px; left: 4px; right: 4px;
+    height: 3px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .unit-hp-fill { height: 100%; border-radius: 2px; }
+  .unit-hp-fill.player { background: var(--blue); }
+  .unit-hp-fill.enemy { background: var(--red); }
+  .unit-stat-row {
+    font-size: 9px;
+    color: var(--text2);
+    font-weight: 500;
+    display: flex;
+    gap: 3px;
+  }
+  .unit-atk { color: var(--red); }
+  .unit-hpv { color: var(--blue); }
+
+  .cell.player-unit { background: rgba(74,158,255,0.1); border-color: rgba(74,158,255,0.3); }
+  .cell.enemy-unit { background: rgba(232,85,85,0.1); border-color: rgba(232,85,85,0.3); }
+  .cell.selected.player-unit { border-color: var(--purple); border-width: 2px; }
+
+  .castle-text {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  .castle-text.enemy { color: var(--red); }
+  .castle-text.player { color: var(--blue); }
+
+  .legend-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text3); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── RIGHT PANEL (actions) ── */
+  .side-actions {
+    width: 160px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .action-btn {
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: var(--bg3);
+    color: var(--text2);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .action-btn:hover { border-color: var(--border2); color: var(--text); background: var(--bg2); }
+  .action-btn.active {
+    background: var(--purple-bg);
+    border-color: var(--purple-border);
+    color: var(--purple);
+  }
+  .action-btn.end {
+    background: var(--bg3);
+    border-color: rgba(246,195,68,0.3);
+    color: var(--gold);
+    justify-content: center;
+    font-weight: 500;
+    margin-top: 4px;
+  }
+  .action-btn.end:hover { background: rgba(246,195,68,0.1); }
+  .btn-icon { font-size: 14px; }
+
+  .unit-info-card {
+    background: var(--bg3);
+    border: 1px solid var(--purple-border);
+    border-radius: var(--r2);
+    padding: 10px;
+  }
+  .unit-info-name { font-size: 13px; font-weight: 700; color: var(--purple); margin-bottom: 6px; }
+  .unit-info-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--text2); padding: 3px 0; border-bottom: 1px solid var(--border); }
+  .unit-info-row:last-child { border-bottom: none; }
+  .unit-info-val { color: var(--text); font-weight: 500; }
+
+  /* ── HAND AREA ── */
+  .hand-area {
+    padding: 10px 12px 12px;
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+  }
+  .hand-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .hand-label { font-size: 11px; color: var(--text2); letter-spacing: 0.08em; }
+  .hand-count { font-size: 11px; background: var(--bg3); border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px; color: var(--text2); }
+  .hand-cards { display: flex; gap: 8px; justify-content: center; }
+
+  .card {
+    width: 88px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: var(--r2);
+    padding: 8px 7px 7px;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .card:hover {
+    transform: translateY(-6px);
+    border-color: rgba(159,122,234,0.4);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+  }
+  .card.selected {
+    transform: translateY(-10px);
+    border-color: var(--purple);
+    border-width: 1.5px;
+    box-shadow: 0 10px 24px rgba(159,122,234,0.3);
+  }
+  .card.too-costly { opacity: 0.4; pointer-events: none; }
+
+  .card-cost-badge {
+    position: absolute;
+    top: 6px; right: 6px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--mana);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 8px rgba(159,122,234,0.5);
+  }
+  .card-name { font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 5px; margin-right: 20px; }
+  .card-art {
+    width: 100%; height: 42px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    margin-bottom: 7px;
+  }
+  .card-divider { height: 1px; background: var(--border); margin-bottom: 6px; }
+  .card-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+  .cstat {
+    font-size: 10px;
+    color: var(--text3);
+    display: flex; align-items: center; gap: 2px;
+  }
+  .cstat .val { color: var(--text); font-weight: 600; }
+  .cstat .lbl { font-size: 9px; }
+  .cstat.move { grid-column: span 2; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="castle-block enemy">
+    <div class="castle-icon enemy">🏯</div>
+    <div class="castle-meta">
+      <div class="castle-label">敵の城</div>
+      <div class="castle-hp-row">
+        <div class="castle-hp-now enemy">18</div>
+        <div class="castle-hp-max">/ 20</div>
+      </div>
+      <div class="hp-bar"><div class="hp-fill enemy" style="width:90%"></div></div>
+    </div>
+  </div>
+
+  <div class="turn-center">
+    <div class="game-title">Card Roguelike 6×6</div>
+    <div class="turn-display">
+      <div class="mana-section">
+        <div class="mana-label">マナ 2/3</div>
+        <div class="mana-crystals">
+          <div class="mana-c on"></div>
+          <div class="mana-c on"></div>
+          <div class="mana-c"></div>
+        </div>
+      </div>
+      <div class="turn-num-wrap">
+        <div class="turn-label">TURN</div>
+        <div class="turn-num">3</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+        <div class="phase-badge">移動フェーズ</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="castle-block player">
+    <div class="castle-icon player">🏰</div>
+    <div class="castle-meta">
+      <div class="castle-label">自分の城</div>
+      <div class="castle-hp-row">
+        <div class="castle-hp-now player">20</div>
+        <div class="castle-hp-max">/ 20</div>
+      </div>
+      <div class="hp-bar"><div class="hp-fill player" style="width:100%"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- LEFT: LOG -->
+  <div class="side-log">
+    <div class="panel">
+      <div class="panel-title">バトルログ</div>
+      <div class="log-entry"><span class="log-tag turn">ターン</span>ターン3 開始</div>
+      <div class="log-entry"><span class="log-tag summon">召喚</span>兵士を 5-2 に配置</div>
+      <div class="log-entry"><span class="log-tag atk">攻撃</span>敵兵士が 自城を攻撃</div>
+      <div class="log-entry"><span class="log-tag move">移動</span>斥候が 3-4 に移動</div>
+      <div class="log-entry"><span class="log-tag turn">ターン</span>ターン2 終了</div>
+    </div>
+  </div>
+
+  <!-- CENTER: GRID -->
+  <div class="battlefield-wrap">
+    <div class="zone-label enemy">— 敵 配置ゾーン（行1〜2）—</div>
+    <div class="grid-outer">
+      <div class="grid" id="grid"></div>
+    </div>
+    <div class="zone-label player">— 自分 配置ゾーン（行5〜6）—</div>
+    <div class="legend-row">
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(74,158,255,0.3);border:1px solid rgba(74,158,255,0.5)"></div>自ユニット</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(232,85,85,0.3);border:1px solid rgba(232,85,85,0.5)"></div>敵ユニット</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(72,187,120,0.2);border:1.5px dashed #48bb78"></div>移動可能</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(232,85,85,0.2);border:1.5px dashed #e85555"></div>攻撃範囲</div>
+    </div>
+  </div>
+
+  <!-- RIGHT: ACTIONS -->
+  <div class="side-actions">
+    <div class="panel">
+      <div class="panel-title">アクション</div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <button class="action-btn"><span class="btn-icon">🃏</span>カードを使う</button>
+        <button class="action-btn active"><span class="btn-icon">👣</span>移動</button>
+        <button class="action-btn"><span class="btn-icon">⚔️</span>攻撃</button>
+        <button class="action-btn end">ターン終了 →</button>
+      </div>
+    </div>
+
+    <div class="unit-info-card">
+      <div class="unit-info-name">⚔ 兵士（選択中）</div>
+      <div class="unit-info-row"><span>攻撃力</span><span class="unit-info-val" style="color:var(--red)">2</span></div>
+      <div class="unit-info-row"><span>体力</span><span class="unit-info-val" style="color:var(--blue)">1 / 2</span></div>
+      <div class="unit-info-row"><span>移動力</span><span class="unit-info-val" style="color:var(--green)">1</span></div>
+      <div class="unit-info-row"><span>状態</span><span class="unit-info-val" style="color:var(--purple)">移動可</span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- HAND AREA -->
+<div class="hand-area">
+  <div class="hand-header">
+    <div class="hand-label">手札</div>
+    <div class="hand-count">5枚</div>
+  </div>
+  <div class="hand-cards" id="hand"></div>
+</div>
+
+<script>
+// ─── GRID DATA ───
+const CASTLE_ENEMY = new Set(['1-3','1-4']);
+const CASTLE_PLAYER = new Set(['6-3','6-4']);
+const MOVEABLE = new Set(['3-3','5-3','4-2','4-4']);
+const ATTACKABLE = new Set(['3-4']);
+const SELECTED = '4-3';
+
+const UNITS = {
+  '2-2': { type:'enemy', icon:'⚔', name:'兵士',   atk:2, hp:2, maxHp:2 },
+  '2-5': { type:'enemy', icon:'🛡', name:'重装兵', atk:3, hp:4, maxHp:4 },
+  '3-4': { type:'enemy', icon:'⚔', name:'兵士',   atk:2, hp:2, maxHp:2 },
+  '4-3': { type:'player', icon:'⚔', name:'兵士',  atk:2, hp:1, maxHp:2 },
+  '5-2': { type:'player', icon:'⚔', name:'兵士',  atk:2, hp:2, maxHp:2 },
+  '5-5': { type:'player', icon:'👁', name:'斥候',  atk:1, hp:1, maxHp:1 },
+};
+
+const grid = document.getElementById('grid');
+
+for (let r = 1; r <= 6; r++) {
+  for (let c = 1; c <= 6; c++) {
+    const key = `${r}-${c}`;
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+
+    if (CASTLE_ENEMY.has(key))       cell.classList.add('castle-enemy');
+    else if (CASTLE_PLAYER.has(key)) cell.classList.add('castle-player');
+    else if (r >= 5)                 cell.classList.add('deploy-zone');
+    else if (r <= 2)                 cell.classList.add('enemy-zone');
+
+    if (key === SELECTED)            cell.classList.add('selected');
+    if (MOVEABLE.has(key))           cell.classList.add('moveable');
+    if (ATTACKABLE.has(key))         cell.classList.add('attackable');
+
+    // coord
+    const coord = document.createElement('span');
+    coord.className = 'coord';
+    coord.textContent = key;
+    cell.appendChild(coord);
+
+    const unit = UNITS[key];
+    if (unit) {
+      cell.classList.add(unit.type + '-unit');
+      const uw = document.createElement('div');
+      uw.className = 'unit-wrap';
+      uw.innerHTML = `
+        <div class="unit-icon">${unit.icon}</div>
+        <div class="unit-stat-row">
+          <span class="unit-atk">${unit.atk}</span>
+          <span style="color:var(--text3)">／</span>
+          <span class="unit-hpv">${unit.hp}</span>
+        </div>
+        <div class="unit-hp-bar">
+          <div class="unit-hp-fill ${unit.type}" style="width:${Math.round(unit.hp/unit.maxHp*100)}%"></div>
+        </div>`;
+      cell.appendChild(uw);
+    } else if (CASTLE_ENEMY.has(key)) {
+      const t = document.createElement('div');
+      t.className = 'castle-text enemy';
+      t.textContent = key === '1-3' ? '敵城' : 'HP18';
+      cell.appendChild(t);
+    } else if (CASTLE_PLAYER.has(key)) {
+      const t = document.createElement('div');
+      t.className = 'castle-text player';
+      t.textContent = key === '6-3' ? '自城' : 'HP20';
+      cell.appendChild(t);
+    }
+
+    grid.appendChild(cell);
+  }
+}
+
+// ─── HAND ───
+const CARDS = [
+  { name:'兵士',   cost:2, icon:'⚔', atk:2, hp:2, move:1, selected:true },
+  { name:'重装兵', cost:3, icon:'🛡', atk:3, hp:4, move:1 },
+  { name:'斥候',   cost:2, icon:'👁', atk:1, hp:1, move:2 },
+  { name:'兵士',   cost:2, icon:'⚔', atk:2, hp:2, move:1 },
+  { name:'重装兵', cost:3, icon:'🛡', atk:3, hp:4, move:1, costly:true },
+];
+
+const hand = document.getElementById('hand');
+const MANA = 2;
+
+CARDS.forEach(c => {
+  const el = document.createElement('div');
+  el.className = 'card' + (c.selected ? ' selected' : '') + (c.costly ? ' too-costly' : '');
+  el.innerHTML = `
+    <div class="card-cost-badge">${c.cost}</div>
+    <div class="card-name">${c.name}</div>
+    <div class="card-art">${c.icon}</div>
+    <div class="card-divider"></div>
+    <div class="card-stats">
+      <div class="cstat"><span class="val" style="color:var(--red)">${c.atk}</span><span class="lbl"> 攻</span></div>
+      <div class="cstat"><span class="val" style="color:var(--blue)">${c.hp}</span><span class="lbl"> 体</span></div>
+      <div class="cstat move"><span class="val" style="color:var(--green)">${c.move}</span><span class="lbl"> 移動力</span></div>
+    </div>`;
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.card').forEach(x => x.classList.remove('selected'));
+    el.classList.add('selected');
+  });
+  hand.appendChild(el);
+});
+</script>
+</body>
+</html>
