@@ -70,6 +70,9 @@ func _ready() -> void:
 	# ---- ゲームオーバーUI ----
 	_build_gameover_ui(battle_manager)
 
+	# ---- ゲーム開始（最初のチャージフェーズ）----
+	battle_manager.begin_first_turn()
+
 
 # ---------------------------------------------------------------------------
 # レイアウト骨格
@@ -195,11 +198,11 @@ func _make_center_info_block(battle_manager: BattleManager) -> Control:
 	turn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(turn_lbl)
 
-	# マナクリスタル行
-	var mana_row := _make_hbox(3)
+	# マナプール表示行（5色）
+	var mana_row := _make_hbox(6)
 	mana_row.name = "ManaRow"
 	mana_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_rebuild_mana_crystals(mana_row, battle_manager.mana, battle_manager.max_mana)
+	_rebuild_mana_pool_display(mana_row, battle_manager.mana_pool)
 	vbox.add_child(mana_row)
 
 	# 敵ターン中オーバーレイ
@@ -217,27 +220,48 @@ func _make_center_info_block(battle_manager: BattleManager) -> Control:
 		turn_lbl.text = "ターン %d" % turn
 		enemy_overlay.visible = not is_player
 		mana_row.modulate = Color.WHITE if is_player else Color(1, 1, 1, 0.3)
-		_rebuild_mana_crystals(mana_row, battle_manager.mana, battle_manager.max_mana)
 	)
-	battle_manager.mana_updated.connect(func(mana: int, max_mana: int) -> void:
-		_rebuild_mana_crystals(mana_row, mana, max_mana)
+	battle_manager.mana_pool_changed.connect(func(pool: Dictionary) -> void:
+		_rebuild_mana_pool_display(mana_row, pool)
 	)
 
 	return vbox
 
 
-func _rebuild_mana_crystals(row: HBoxContainer, mana: int, max_mana: int) -> void:
+func _rebuild_mana_pool_display(row: HBoxContainer, pool: Dictionary) -> void:
 	for child in row.get_children():
 		child.queue_free()
-	for i in max_mana:
-		var filled := i < mana
-		var p := Panel.new()
-		p.custom_minimum_size = Vector2(10.0, 10.0)
-		var s := StyleBoxFlat.new()
-		s.bg_color = C_BLUE if filled else Color(C_BLUE.r, C_BLUE.g, C_BLUE.b, 0.2)
-		s.set_corner_radius_all(2)
-		p.add_theme_stylebox_override("panel", s)
-		row.add_child(p)
+
+	const COLORS: Array = ["red", "blue", "green", "white", "black"]
+	const NAMES:  Array = ["赤", "青", "緑", "白", "黒"]
+	const COLS: Array = [
+		Color("#e85555"), Color("#4a9eff"), Color("#48bb78"),
+		Color("#dde8f0"), Color("#8892a4")
+	]
+
+	for i in COLORS.size():
+		var color_key: String = COLORS[i]
+		var count: int        = pool.get(color_key, 0)
+		var col: Color        = COLS[i]
+
+		var vbox := VBoxContainer.new()
+		vbox.add_theme_constant_override("separation", 2)
+
+		var name_lbl := Label.new()
+		name_lbl.text = NAMES[i]
+		name_lbl.add_theme_color_override("font_color", col)
+		name_lbl.add_theme_font_size_override("font_size", 8)
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vbox.add_child(name_lbl)
+
+		var count_lbl := Label.new()
+		count_lbl.text = str(count)
+		count_lbl.add_theme_color_override("font_color", col if count > 0 else Color(col.r, col.g, col.b, 0.3))
+		count_lbl.add_theme_font_size_override("font_size", 13)
+		count_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vbox.add_child(count_lbl)
+
+		row.add_child(vbox)
 
 
 func _place_grid(vbox: VBoxContainer, grid_view: GridView, battle_manager: BattleManager = null) -> void:
@@ -359,8 +383,21 @@ func _place_right_panel(vbox: VBoxContainer, battle_manager: BattleManager) -> v
 		child.queue_free()
 
 	var inner := VBoxContainer.new()
-	inner.add_theme_constant_override("separation", 10)
+	inner.add_theme_constant_override("separation", 8)
 	inner.size_flags_vertical = Control.SIZE_EXPAND_FILL
+
+	# ── チャージセクション（チャージ待機中のみ表示）──
+	var charge_section := _make_charge_section(battle_manager)
+	charge_section.visible = false
+	inner.add_child(charge_section)
+
+	# ── 区切り線（チャージ中のみ表示）──
+	var charge_sep := ColorRect.new()
+	charge_sep.color = Color(1, 1, 1, 0.08)
+	charge_sep.custom_minimum_size.y = 1
+	charge_sep.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	charge_sep.visible = false
+	inner.add_child(charge_sep)
 
 	# ── ユニット情報ブロック ──
 	var unit_section := VBoxContainer.new()
@@ -369,12 +406,10 @@ func _place_right_panel(vbox: VBoxContainer, battle_manager: BattleManager) -> v
 	var unit_title := _make_label("UNIT INFO", C_TEXT3, 10)
 	unit_section.add_child(unit_title)
 
-	# 空状態の placeholder
 	var no_unit_lbl := _make_label("選択なし", C_TEXT3, 10)
 	no_unit_lbl.name = "NoUnitLabel"
 	unit_section.add_child(no_unit_lbl)
 
-	# ユニット詳細（初期は非表示）
 	var detail := _make_unit_detail_block()
 	detail.name    = "UnitDetail"
 	detail.visible = false
@@ -397,7 +432,16 @@ func _place_right_panel(vbox: VBoxContainer, battle_manager: BattleManager) -> v
 
 	right.add_child(_make_margin(inner, 12))
 
-	# ── シグナルでユニット情報を更新 ──
+	# チャージ中はセクション表示 + ターン終了ボタン無効化
+	battle_manager.charge_requested.connect(func() -> void:
+		charge_section.visible = true
+		charge_sep.visible     = true
+		end_btn.disabled       = true
+		end_btn.modulate       = Color(1, 1, 1, 0.3)
+		_refresh_charge_counts(charge_section, battle_manager.mana_pool)
+	)
+
+	# ユニット情報更新
 	battle_manager.unit_selection_changed.connect(func(unit: Unit) -> void:
 		if unit == null:
 			no_unit_lbl.visible = true
@@ -407,6 +451,90 @@ func _place_right_panel(vbox: VBoxContainer, battle_manager: BattleManager) -> v
 			detail.visible      = true
 			_update_unit_detail(detail, unit)
 	)
+
+	# チャージ完了後にセクションを隠してボタン復活
+	battle_manager.mana_pool_changed.connect(func(_pool: Dictionary) -> void:
+		if not battle_manager._charge_pending:
+			charge_section.visible = false
+			charge_sep.visible     = false
+			end_btn.disabled       = false
+			end_btn.modulate       = Color.WHITE
+	)
+
+
+const _MANA_COLORS: Array = ["red",      "blue",     "green",    "white",    "black"]
+const _MANA_NAMES:  Array = ["赤",       "青",       "緑",       "白",       "黒"]
+const _MANA_COLS:   Array = [
+	Color("#e85555"), Color("#4a9eff"), Color("#48bb78"),
+	Color("#dde8f0"), Color("#8892a4")
+]
+
+
+func _make_charge_section(battle_manager: BattleManager) -> VBoxContainer:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+
+	# ヘッダー（点滅感のある強調ラベル）
+	var title := _make_label("▶ マナチャージ", C_GOLD, 10)
+	vbox.add_child(title)
+
+	# 5色ボタン（2行：3+2）
+	var row1 := _make_hbox(4)
+	row1.name = "ChargeRow1"
+	var row2 := _make_hbox(4)
+	row2.name = "ChargeRow2"
+
+	for i in _MANA_COLORS.size():
+		var color_key: String = _MANA_COLORS[i]
+		var col: Color        = _MANA_COLS[i]
+
+		var btn_vbox := VBoxContainer.new()
+		btn_vbox.add_theme_constant_override("separation", 2)
+
+		var btn := Button.new()
+		btn.text               = _MANA_NAMES[i]
+		btn.custom_minimum_size = Vector2(40.0, 36.0)
+		btn.focus_mode         = Control.FOCUS_NONE
+
+		var bs := StyleBoxFlat.new()
+		bs.bg_color     = Color(col.r, col.g, col.b, 0.12)
+		bs.border_color = Color(col.r, col.g, col.b, 0.55)
+		bs.set_border_width_all(1)
+		bs.set_corner_radius_all(6)
+		btn.add_theme_stylebox_override("normal", bs)
+
+		var bs_hover := bs.duplicate() as StyleBoxFlat
+		bs_hover.bg_color = Color(col.r, col.g, col.b, 0.28)
+		bs_hover.border_color = Color(col.r, col.g, col.b, 0.9)
+		btn.add_theme_stylebox_override("hover", bs_hover)
+
+		btn.add_theme_color_override("font_color", col)
+		btn.add_theme_font_size_override("font_size", 12)
+		btn.pressed.connect(battle_manager.charge_mana.bind(color_key))
+		btn_vbox.add_child(btn)
+
+		# 所持数ラベル
+		var cnt := _make_label("0", Color(col.r, col.g, col.b, 0.6), 8)
+		cnt.name = "cnt_%s" % color_key
+		cnt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		btn_vbox.add_child(cnt)
+
+		if i < 3:
+			row1.add_child(btn_vbox)
+		else:
+			row2.add_child(btn_vbox)
+
+	vbox.add_child(row1)
+	vbox.add_child(row2)
+	return vbox
+
+
+func _refresh_charge_counts(charge_section: VBoxContainer, pool: Dictionary) -> void:
+	for i in _MANA_COLORS.size():
+		var color_key: String = _MANA_COLORS[i]
+		var cnt: Label = charge_section.find_child("cnt_%s" % color_key, true, false) as Label
+		if cnt != null:
+			cnt.text = "%d所持" % pool.get(color_key, 0)
 
 
 func _make_unit_detail_block() -> VBoxContainer:

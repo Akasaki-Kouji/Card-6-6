@@ -134,7 +134,8 @@ func _make_art_area(card: Card) -> Control:
 	art.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# オーナーカラーに合わせた薄い背景
-	var base: Color = C_BLUE if card.cost <= 2 else C_RED
+	# 赤マナを含むカードは赤系、それ以外は青系
+	var base: Color = C_RED if card.cost.has("red") else C_BLUE
 	art.color = Color(base.r, base.g, base.b, 0.08)
 
 	# 種別アイコン（テキスト代替）
@@ -201,30 +202,37 @@ func _make_stat_cell(key: String, val: String, color: Color) -> Control:
 	return vbox
 
 
-func _make_cost_badge(cost: int) -> Control:
-	var badge := Panel.new()
-	badge.custom_minimum_size = Vector2(20.0, 20.0)
-	badge.position = Vector2(4.0, 4.0)
-	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+func _make_cost_badge(cost: Dictionary) -> Control:
+	var hbox := HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 2)
+	hbox.position    = Vector2(4.0, 4.0)
+	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	var s := StyleBoxFlat.new()
-	s.bg_color = Color(C_GOLD.r, C_GOLD.g, C_GOLD.b, 0.2)
-	s.border_color = Color(C_GOLD.r, C_GOLD.g, C_GOLD.b, 0.5)
-	s.set_border_width_all(1)
-	s.set_corner_radius_all(3)
-	badge.add_theme_stylebox_override("panel", s)
+	for color in cost:
+		var count: int = cost[color]
+		for i in count:
+			var pip := Panel.new()
+			pip.custom_minimum_size = Vector2(10.0, 10.0)
+			pip.mouse_filter        = Control.MOUSE_FILTER_IGNORE
+			var s := StyleBoxFlat.new()
+			s.bg_color = _mana_color(color)
+			s.border_color = Color(1, 1, 1, 0.3)
+			s.set_border_width_all(1)
+			s.set_corner_radius_all(3)
+			pip.add_theme_stylebox_override("panel", s)
+			hbox.add_child(pip)
 
-	var lbl := Label.new()
-	lbl.text = str(cost)
-	lbl.add_theme_color_override("font_color", C_GOLD)
-	lbl.add_theme_font_size_override("font_size", 10)
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge.add_child(lbl)
+	return hbox
 
-	return badge
+
+func _mana_color(color: String) -> Color:
+	match color:
+		"red":   return Color("#e85555")
+		"blue":  return Color("#4a9eff")
+		"green": return Color("#48bb78")
+		"white": return Color("#dde8f0")
+		"black": return Color("#8892a4")
+	return Color.WHITE
 
 
 func _card_icon(card: Card) -> String:
@@ -276,11 +284,16 @@ func highlight_selected(card: Card) -> void:
 			panel.position = Vector2.ZERO
 
 
-## マナ不足のカードをグレーアウトする
-func apply_mana_filter(current_mana: int) -> void:
+## 払えないカードをグレーアウトする
+func apply_mana_filter(mana_pool: Dictionary) -> void:
 	for c: Card in _cards:
+		var can_afford := true
+		for color in c.cost:
+			if mana_pool.get(color, 0) < c.cost[color]:
+				can_afford = false
+				break
 		var btn: Button = _cards[c]
-		btn.modulate = Color.WHITE if c.cost <= current_mana else Color(0.45, 0.45, 0.45, 1.0)
+		btn.modulate = Color.WHITE if can_afford else Color(0.45, 0.45, 0.45, 1.0)
 
 
 ## 全カードのハイライトを解除する

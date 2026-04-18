@@ -5,9 +5,10 @@ extends Node
 # シグナル
 # ---------------------------------------------------------------------------
 signal turn_changed(current_player: String, turn: int)
-signal mana_updated(mana: int, max_mana: int)
+signal mana_pool_changed(pool: Dictionary)
+signal charge_requested()
 signal game_ended(winner: String)
-signal unit_selection_changed(unit: Unit)   # null = 選択解除
+signal unit_selection_changed(unit: Unit)
 signal battle_log(message: String)
 
 # ---------------------------------------------------------------------------
@@ -20,30 +21,33 @@ signal battle_log(message: String)
 @export var hand_view:     HandView
 
 # ---------------------------------------------------------------------------
-# 状態定義
+# 定数
 # ---------------------------------------------------------------------------
 enum State { IDLE, CARD_SELECTED, UNIT_SELECTED }
 
-# ---------------------------------------------------------------------------
-# ハイライト色
-# ---------------------------------------------------------------------------
 const COLOR_MOVE   := Color(0.3, 1.0, 0.3, 0.7)
 const COLOR_ATTACK := Color(1.0, 0.3, 0.3, 0.7)
 const COLOR_DEPLOY := Color(0.3, 0.5, 1.0, 0.7)
 
+const MANA_COLORS := ["red", "blue", "green", "white", "black"]
+
 # ---------------------------------------------------------------------------
 # プロパティ
 # ---------------------------------------------------------------------------
-var current_state:   State  = State.IDLE
-var selected_unit:   Unit   = null
-var selected_card:   Card   = null
+var current_state:    State  = State.IDLE
+var selected_unit:    Unit   = null
+var selected_card:    Card   = null
 
-var current_player:  String = "player"
-var turn:            int    = 1
-var mana:            int    = 1
-var max_mana:        int    = 1
+var current_player:   String = "player"
+var turn:             int    = 1
 
-var _game_over:      bool   = false
+var mana_pool:        Dictionary = {}   # 現在使えるマナ（ターン開始時にmaxへリセット）
+var mana_pool_max:    Dictionary = {}   # 蓄積された最大マナ（チャージで増加、減らない）
+var enemy_mana_pool:     Dictionary = {}
+var enemy_mana_pool_max: Dictionary = {}
+
+var _charge_pending:  bool   = false
+var _game_over:       bool   = false
 
 # ---------------------------------------------------------------------------
 # 初期化
@@ -55,6 +59,12 @@ func _ready() -> void:
 	assert(card_manager != null, "BattleManager: card_manager が未設定")
 	assert(hand_view    != null, "BattleManager: hand_view が未設定")
 
+	for color in MANA_COLORS:
+		mana_pool[color]           = 0
+		mana_pool_max[color]       = 0
+		enemy_mana_pool[color]     = 0
+		enemy_mana_pool_max[color] = 0
+
 	grid_view.cell_clicked.connect(_on_cell_clicked)
 	hand_view.card_selected.connect(_on_card_selected)
 	card_manager.hand_changed.connect(_on_hand_changed)
@@ -63,35 +73,62 @@ func _ready() -> void:
 	unit_manager.castle_damaged.connect(_on_castle_damaged)
 	unit_manager.game_over.connect(_on_game_over)
 
-	print("BattleManager: 初期化完了 ターン%d マナ%d/%d" % [turn, mana, max_mana])
+
+## ゲーム開始時に呼ぶ（最初のチャージフェーズを開始する）
+func begin_first_turn() -> void:
+	_charge_pending = true
+	turn_changed.emit(current_player, turn)
+	mana_pool_changed.emit(mana_pool)
+	charge_requested.emit()
+	battle_log.emit("── ターン %d 開始 ──" % turn)
+
+
+# ---------------------------------------------------------------------------
+# チャージ
+# ---------------------------------------------------------------------------
+
+## プレイヤーが色を選んでマナをチャージする
+func charge_mana(color: String) -> void:
+	if not _charge_pending or _game_over:
+		return
+	mana_pool_max[color] = mana_pool_max.get(color, 0) + 1
+	_restore_mana_pool()   # 最大値にリセット
+	_charge_pending = false
+	mana_pool_changed.emit(mana_pool)
+	hand_view.apply_mana_filter(mana_pool)
+	battle_log.emit("%s マナをチャージ (最大%d個)" % [_color_name(color), mana_pool_max[color]])
+
+
+func _restore_mana_pool() -> void:
+	for color in MANA_COLORS:
+		mana_pool[color] = mana_pool_max[color]
 
 
 # ---------------------------------------------------------------------------
 # ターンシステム
 # ---------------------------------------------------------------------------
 func end_turn() -> void:
-	if _game_over or current_player != "player":
+	if _game_over or current_player != "player" or _charge_pending:
 		return
-	print("BattleManager: プレイヤーターン終了")
 	_reset_state()
 	current_player = "enemy"
+	battle_log.emit("── 自分のターン終了 ──")
 	_run_enemy_turn()
 
 
 func _start_player_turn() -> void:
 	current_player = "player"
 	turn          += 1
-	max_mana       = min(max_mana + 1, 10)
-	mana           = max_mana
 
 	unit_manager.reset_all_units()
 	card_manager.draw_card()
-	hand_view.apply_mana_filter(mana)
+	_restore_mana_pool()   # ターン開始時に現在マナを最大値に戻す
 
+	_charge_pending = true
 	turn_changed.emit(current_player, turn)
-	mana_updated.emit(mana, max_mana)
-	battle_log.emit("── ターン %d 開始 (マナ %d) ──" % [turn, mana])
-	print("BattleManager: プレイヤーターン開始 ターン%d マナ%d/%d" % [turn, mana, max_mana])
+	mana_pool_changed.emit(mana_pool)
+	charge_requested.emit()
+	battle_log.emit("── ターン %d 開始 ──" % turn)
 
 
 # ---------------------------------------------------------------------------
@@ -101,10 +138,14 @@ func _run_enemy_turn() -> void:
 	battle_log.emit("── 敵のターン ──")
 	unit_manager.reset_all_units()
 
-	# 敵のカード召喚AI
+	# 敵がランダムに1色チャージ（最大プールに加算してリセット）
+	var charge_color: String = MANA_COLORS[randi() % MANA_COLORS.size()]
+	enemy_mana_pool_max[charge_color] = enemy_mana_pool_max.get(charge_color, 0) + 1
+	for color in MANA_COLORS:
+		enemy_mana_pool[color] = enemy_mana_pool_max[color]
+
 	_enemy_summon()
 
-	# 敵ユニット一覧のコピーを取る（攻撃で消える可能性があるため）
 	var enemy_units: Array[Unit] = []
 	for unit: Unit in unit_manager.units:
 		if unit.owner == "enemy":
@@ -118,36 +159,32 @@ func _run_enemy_turn() -> void:
 
 
 func _enemy_summon() -> void:
-	# マナ相当として turn 数を使用（毎ターン1増加）
-	var enemy_mana: int = min(turn, 10)
 	var deployable := grid_manager.get_deployable_cells("enemy")
 	if deployable.is_empty():
 		return
 
-	# コストが払えるカードからランダムに召喚（最大1体/ターン）
 	var candidates: Array[Card] = []
 	for c: Card in [Card.make_soldier(), Card.make_heavy(), Card.make_scout()]:
-		if c.cost <= enemy_mana:
+		if _can_afford(c, enemy_mana_pool):
 			candidates.append(c)
 	if candidates.is_empty():
 		return
 
 	candidates.shuffle()
-	var card: Card = candidates[0]
-	var pos: Vector2i = deployable[randi() % deployable.size()]
+	var card: Card     = candidates[0]
+	var pos: Vector2i  = deployable[randi() % deployable.size()]
+	_consume_mana(card, enemy_mana_pool)
 	var unit := unit_manager.spawn_unit("enemy", card.hp, card.attack, card.move, pos)
 	_refresh_cell(unit.position)
 	battle_log.emit("敵が %s を召喚" % card.card_name)
 
 
 func _enemy_act(unit: Unit) -> void:
-	# ① 攻撃できるなら攻撃
 	var attackable := unit_manager.get_attackable_positions(unit)
 	if not attackable.is_empty():
 		unit_manager.attack(unit, attackable[0])
 		return
 
-	# ② 移動して攻撃を試みる
 	if not unit.has_moved:
 		var target := _find_nearest_player_target(unit.position)
 		if target != Vector2i(-1, -1):
@@ -156,7 +193,6 @@ func _enemy_act(unit: Unit) -> void:
 				var best := _closest_cell_to(movable, target)
 				_execute_move(unit, best)
 
-	# ③ 移動後に再度攻撃チェック
 	if not unit.has_attacked:
 		attackable = unit_manager.get_attackable_positions(unit)
 		if not attackable.is_empty():
@@ -167,7 +203,6 @@ func _find_nearest_player_target(from: Vector2i) -> Vector2i:
 	var nearest:  Vector2i = Vector2i(-1, -1)
 	var min_dist: int      = 999
 
-	# 自軍ユニット
 	for unit: Unit in unit_manager.units:
 		if unit.owner != "player":
 			continue
@@ -176,7 +211,6 @@ func _find_nearest_player_target(from: Vector2i) -> Vector2i:
 			min_dist = dist
 			nearest  = unit.position
 
-	# 自軍城
 	for castle: Castle in unit_manager.castles:
 		if castle.owner != "player":
 			continue
@@ -204,7 +238,7 @@ func _closest_cell_to(cells: Array[Vector2i], target: Vector2i) -> Vector2i:
 # メイン入力ハンドラ
 # ---------------------------------------------------------------------------
 func _on_cell_clicked(pos: Vector2i) -> void:
-	if _game_over or current_player != "player":
+	if _game_over or current_player != "player" or _charge_pending:
 		return
 	match current_state:
 		State.IDLE:
@@ -222,21 +256,18 @@ func _handle_idle(pos: Vector2i) -> void:
 	var unit := grid_manager.get_unit(pos) as Unit
 	if unit != null and unit.owner == "player":
 		_select_unit(unit)
-	else:
-		print("BattleManager[IDLE]: 無効なクリック pos=%s" % _coord(pos))
 
 
 # ---------------------------------------------------------------------------
 # CARD_SELECTED 状態
 # ---------------------------------------------------------------------------
 func _on_card_selected(card: Card) -> void:
-	if _game_over or current_player != "player":
+	if _game_over or current_player != "player" or _charge_pending:
 		return
-	if mana < card.cost:
-		print("BattleManager: マナ不足 必要=%d 現在=%d" % [card.cost, mana])
+	if not _can_afford(card, mana_pool):
+		battle_log.emit("マナ不足: %s" % card.card_name)
 		return
 	if current_state == State.CARD_SELECTED and selected_card == card:
-		print("BattleManager: カード選択解除")
 		_reset_state()
 		return
 	_select_card(card)
@@ -251,7 +282,6 @@ func _select_card(card: Card) -> void:
 	grid_view.reset_highlight()
 	grid_view.highlight_cells(deployable, COLOR_DEPLOY)
 	hand_view.highlight_selected(card)
-	print("BattleManager: カード選択 %s 配置可能=%d" % [card, deployable.size()])
 
 
 func _handle_card_selected(pos: Vector2i) -> void:
@@ -260,61 +290,49 @@ func _handle_card_selected(pos: Vector2i) -> void:
 		_play_card(selected_card, pos)
 		_reset_state()
 	else:
-		print("BattleManager[CARD_SELECTED]: 無効なマス → IDLE")
 		_reset_state()
 
 
 func _play_card(card: Card, pos: Vector2i) -> void:
-	mana -= card.cost
-	mana_updated.emit(mana, max_mana)
+	_consume_mana(card, mana_pool)
+	mana_pool_changed.emit(mana_pool)
 	var unit := unit_manager.spawn_unit("player", card.hp, card.attack, card.move, pos)
 	_refresh_cell(unit.position)
 	card_manager.remove_from_hand(card)
-	hand_view.apply_mana_filter(mana)
+	hand_view.apply_mana_filter(mana_pool)
 	battle_log.emit("%s を %s に召喚" % [card.card_name, _coord(pos)])
-	print("BattleManager: カード使用 %s マナ残り=%d" % [card, mana])
 
 
 func _on_hand_changed(hand: Array[Card]) -> void:
 	hand_view.update_hand(hand)
-	hand_view.apply_mana_filter(mana)
+	hand_view.apply_mana_filter(mana_pool)
 
 
 # ---------------------------------------------------------------------------
 # UNIT_SELECTED 状態
 # ---------------------------------------------------------------------------
 func _handle_unit_selected(pos: Vector2i) -> void:
-	# ① 同じマスを再クリック → 選択解除
 	if pos == selected_unit.position:
-		print("BattleManager[UNIT_SELECTED]: 選択解除")
 		_reset_state()
 		return
 
-	# ② 攻撃可能マス → 攻撃
 	var attackable := unit_manager.get_attackable_positions(selected_unit)
 	if pos in attackable:
 		_execute_attack(selected_unit, pos)
 		_reset_state()
 		return
 
-	# ③ 移動可能マス → 移動（移動後も選択維持して攻撃できる）
 	var movable := get_movable_cells(selected_unit)
 	if pos in movable:
 		_execute_move(selected_unit, pos)
-		_select_unit(selected_unit)   # ハイライトを移動後の位置で再計算
+		_select_unit(selected_unit)
 		return
 
-	# ④ 別の自軍ユニット → 選択切替
 	var unit := grid_manager.get_unit(pos) as Unit
 	if unit != null and unit.owner == "player":
-		print("BattleManager[UNIT_SELECTED]: 選択切替 %s → %s" % [
-			_coord(selected_unit.position), _coord(pos)
-		])
 		_select_unit(unit)
 		return
 
-	# ⑤ それ以外 → IDLE
-	print("BattleManager[UNIT_SELECTED]: 無効なクリック → IDLE pos=%s" % _coord(pos))
 	_reset_state()
 
 
@@ -329,12 +347,6 @@ func _select_unit(unit: Unit) -> void:
 	grid_view.highlight_cells(movable,    COLOR_MOVE)
 	grid_view.highlight_cells(attackable, COLOR_ATTACK)
 	unit_selection_changed.emit(unit)
-
-	print("BattleManager: 選択 %s 移動=%s 攻撃=%s" % [
-		_coord(unit.position),
-		movable.map(_coord),
-		attackable.map(_coord),
-	])
 
 
 func get_movable_cells(unit: Unit) -> Array[Vector2i]:
@@ -358,12 +370,10 @@ func _execute_move(unit: Unit, to: Vector2i) -> void:
 	_refresh_cell(to)
 	var who := "自軍" if unit.owner == "player" else "敵軍"
 	battle_log.emit("%s %s→%s" % [who, _coord(from), _coord(to)])
-	print("BattleManager: 移動 %s → %s" % [_coord(from), _coord(to)])
 
 
 func _execute_attack(attacker: Unit, target_pos: Vector2i) -> void:
 	if attacker.has_attacked:
-		print("BattleManager: 攻撃済みのユニット")
 		return
 	unit_manager.attack(attacker, target_pos)
 
@@ -393,25 +403,21 @@ func _on_castle_damaged(castle: Castle) -> void:
 func _on_game_over(winner: String) -> void:
 	_game_over = true
 	_reset_state()
-	var msg := "勝利！" if winner == "player" else "敗北..."
-	print("BattleManager: ゲーム終了 → %s" % msg)
 	game_ended.emit(winner)
 
 
 # ---------------------------------------------------------------------------
-# セル表示の更新（ユニット・城・空を自動判定）
+# セル表示の更新
 # ---------------------------------------------------------------------------
 func _refresh_cell(pos: Vector2i) -> void:
 	var unit := grid_manager.get_unit(pos) as Unit
 	if unit != null:
 		grid_view.set_unit_cell(pos, unit.owner == "player", unit.hp, unit.max_hp)
 		return
-
 	var castle := unit_manager.get_castle_at(pos)
 	if castle != null:
 		grid_view.set_castle_cell(pos, castle.owner == "player", castle.hp)
 		return
-
 	grid_view.clear_cell(pos)
 
 
@@ -428,7 +434,29 @@ func _reset_state() -> void:
 
 
 # ---------------------------------------------------------------------------
-# ユーティリティ
+# マナユーティリティ
 # ---------------------------------------------------------------------------
+func _can_afford(card: Card, pool: Dictionary) -> bool:
+	for color in card.cost:
+		if pool.get(color, 0) < card.cost[color]:
+			return false
+	return true
+
+
+func _consume_mana(card: Card, pool: Dictionary) -> void:
+	for color in card.cost:
+		pool[color] -= card.cost[color]
+
+
+func _color_name(color: String) -> String:
+	match color:
+		"red":   return "赤"
+		"blue":  return "青"
+		"green": return "緑"
+		"white": return "白"
+		"black": return "黒"
+	return color
+
+
 func _coord(pos: Vector2i) -> String:
 	return "%d-%d" % [pos.y + 1, pos.x + 1]
