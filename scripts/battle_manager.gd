@@ -268,11 +268,11 @@ func _handle_unit_selected(pos: Vector2i) -> void:
 		_reset_state()
 		return
 
-	# ③ 移動可能マス → 移動
+	# ③ 移動可能マス → 移動（移動後も選択維持して攻撃できる）
 	var movable := get_movable_cells(selected_unit)
 	if pos in movable:
 		_execute_move(selected_unit, pos)
-		_reset_state()
+		_select_unit(selected_unit)   # ハイライトを移動後の位置で再計算
 		return
 
 	# ④ 別の自軍ユニット → 選択切替
@@ -326,7 +326,6 @@ func _execute_move(unit: Unit, to: Vector2i) -> void:
 	unit.has_moved = true
 	_refresh_cell(from)
 	_refresh_cell(to)
-	grid_view.reset_highlight()
 	print("BattleManager: 移動 %s → %s" % [_coord(from), _coord(to)])
 
 
