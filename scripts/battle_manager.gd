@@ -7,6 +7,7 @@ extends Node
 signal turn_changed(current_player: String, turn: int)
 signal mana_updated(mana: int, max_mana: int)
 signal game_ended(winner: String)
+signal unit_selection_changed(unit: Unit)   # null = 選択解除
 
 # ---------------------------------------------------------------------------
 # 依存ノード
@@ -299,6 +300,7 @@ func _select_unit(unit: Unit) -> void:
 	grid_view.reset_highlight()
 	grid_view.highlight_cells(movable,    COLOR_MOVE)
 	grid_view.highlight_cells(attackable, COLOR_ATTACK)
+	unit_selection_changed.emit(unit)
 
 	print("BattleManager: 選択 %s 移動=%s 攻撃=%s" % [
 		_coord(unit.position),
@@ -345,6 +347,8 @@ func _on_unit_died(unit: Unit) -> void:
 
 func _on_unit_damaged(unit: Unit) -> void:
 	_refresh_cell(unit.position)
+	if unit == selected_unit:
+		unit_selection_changed.emit(unit)
 
 
 func _on_castle_damaged(castle: Castle) -> void:
@@ -386,6 +390,7 @@ func _reset_state() -> void:
 	selected_card = null
 	grid_view.reset_highlight()
 	hand_view.reset_highlight()
+	unit_selection_changed.emit(null)
 
 
 # ---------------------------------------------------------------------------

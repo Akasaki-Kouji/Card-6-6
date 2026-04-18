@@ -289,27 +289,165 @@ func _place_hand(vbox: VBoxContainer, hand_view: HandView) -> void:
 
 
 func _place_right_panel(vbox: VBoxContainer, battle_manager: BattleManager) -> void:
-	# 右パネルにターン終了ボタンを追加
 	var right := vbox.get_node("MainHBox/RightPanel") as PanelContainer
 	if right == null:
 		return
 
-	# 既存の子をクリアして作り直し
 	for child in right.get_children():
 		child.queue_free()
 
 	var inner := VBoxContainer.new()
-	inner.add_theme_constant_override("separation", 6)
+	inner.add_theme_constant_override("separation", 10)
+	inner.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
-	var title := _make_label("ACTIONS", C_TEXT3, 10)
-	inner.add_child(title)
+	# ── ユニット情報ブロック ──
+	var unit_section := VBoxContainer.new()
+	unit_section.add_theme_constant_override("separation", 6)
 
-	# ターン終了ボタン
+	var unit_title := _make_label("UNIT INFO", C_TEXT3, 10)
+	unit_section.add_child(unit_title)
+
+	# 空状態の placeholder
+	var no_unit_lbl := _make_label("選択なし", C_TEXT3, 10)
+	no_unit_lbl.name = "NoUnitLabel"
+	unit_section.add_child(no_unit_lbl)
+
+	# ユニット詳細（初期は非表示）
+	var detail := _make_unit_detail_block()
+	detail.name    = "UnitDetail"
+	detail.visible = false
+	unit_section.add_child(detail)
+
+	inner.add_child(unit_section)
+
+	# スペーサー
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inner.add_child(spacer)
+
+	# ── ターン終了ボタン ──
+	var action_title := _make_label("ACTIONS", C_TEXT3, 10)
+	inner.add_child(action_title)
+
 	var end_btn := _make_end_turn_button()
 	end_btn.pressed.connect(battle_manager.end_turn)
 	inner.add_child(end_btn)
 
 	right.add_child(_make_margin(inner, 12))
+
+	# ── シグナルでユニット情報を更新 ──
+	battle_manager.unit_selection_changed.connect(func(unit: Unit) -> void:
+		if unit == null:
+			no_unit_lbl.visible = true
+			detail.visible      = false
+		else:
+			no_unit_lbl.visible = false
+			detail.visible      = true
+			_update_unit_detail(detail, unit)
+	)
+
+
+func _make_unit_detail_block() -> VBoxContainer:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 4)
+
+	# オーナーバッジ
+	var owner_lbl := _make_label("", C_BLUE, 11)
+	owner_lbl.name = "OwnerLabel"
+	owner_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(owner_lbl)
+
+	# 区切り線
+	var sep := ColorRect.new()
+	sep.color = Color(1, 1, 1, 0.08)
+	sep.custom_minimum_size.y = 1
+	sep.size_flags_horizontal  = Control.SIZE_EXPAND_FILL
+	vbox.add_child(sep)
+
+	# HP バー
+	var hp_row := _make_hbox(6)
+	var hp_key := _make_label("HP", C_TEXT3, 9)
+	var hp_val := _make_label("", C_BLUE, 11)
+	hp_val.name = "HpValue"
+	hp_row.add_child(hp_key)
+	hp_row.add_child(hp_val)
+	vbox.add_child(hp_row)
+
+	var hp_bar_bg := Panel.new()
+	hp_bar_bg.custom_minimum_size = Vector2(0.0, 5.0)
+	hp_bar_bg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var bg_s := StyleBoxFlat.new()
+	bg_s.bg_color = Color(C_BLUE.r, C_BLUE.g, C_BLUE.b, 0.15)
+	bg_s.set_corner_radius_all(2)
+	hp_bar_bg.add_theme_stylebox_override("panel", bg_s)
+	var hp_fill := ColorRect.new()
+	hp_fill.name  = "HpFill"
+	hp_fill.color = Color(C_BLUE.r, C_BLUE.g, C_BLUE.b, 0.7)
+	hp_fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hp_fill.size_flags_stretch_ratio = 1.0
+	var fill_hbox := HBoxContainer.new()
+	fill_hbox.add_theme_constant_override("separation", 0)
+	fill_hbox.add_child(hp_fill)
+	hp_bar_bg.add_child(fill_hbox)
+	vbox.add_child(hp_bar_bg)
+
+	# ATK / MOV
+	for pair: Array in [["ATK", "AtkValue", C_RED], ["MOV", "MovValue", C_TEXT2]]:
+		var row := _make_hbox(6)
+		var key := _make_label(pair[0], C_TEXT3, 9)
+		var val := _make_label("", pair[2], 11)
+		val.name = pair[1]
+		row.add_child(key)
+		row.add_child(val)
+		vbox.add_child(row)
+
+	# 移動/攻撃フラグ
+	var flags_row := _make_hbox(4)
+	flags_row.name = "FlagsRow"
+	vbox.add_child(flags_row)
+
+	return vbox
+
+
+func _update_unit_detail(detail: VBoxContainer, unit: Unit) -> void:
+	var is_player := unit.owner == "player"
+	var color     := C_BLUE if is_player else C_RED
+
+	var owner_lbl: Label     = detail.find_child("OwnerLabel", true, false) as Label
+	var hp_val:    Label     = detail.find_child("HpValue",    true, false) as Label
+	var hp_fill:   ColorRect = detail.find_child("HpFill",     true, false) as ColorRect
+	var atk_val:   Label     = detail.find_child("AtkValue",   true, false) as Label
+	var mov_val:   Label     = detail.find_child("MovValue",   true, false) as Label
+	var flags_row: HBoxContainer = detail.find_child("FlagsRow", true, false) as HBoxContainer
+
+	owner_lbl.text = "自軍ユニット" if is_player else "敵ユニット"
+	owner_lbl.add_theme_color_override("font_color", color)
+
+	hp_val.text = "%d / %d" % [unit.hp, unit.max_hp]
+	hp_val.add_theme_color_override("font_color", color)
+	hp_fill.color = Color(color.r, color.g, color.b, 0.7)
+	hp_fill.size_flags_stretch_ratio = float(unit.hp) / float(unit.max_hp) if unit.max_hp > 0 else 0.0
+
+	atk_val.text = str(unit.attack)
+	mov_val.text = str(unit.move)
+
+	# 移動/攻撃フラグバッジ
+	for child in flags_row.get_children():
+		child.queue_free()
+	if unit.has_moved:
+		flags_row.add_child(_make_flag_badge("移動済", C_TEXT3))
+	if unit.has_attacked:
+		flags_row.add_child(_make_flag_badge("攻撃済", C_TEXT3))
+	if unit.just_summoned:
+		flags_row.add_child(_make_flag_badge("召喚直後", C_GOLD))
+
+
+func _make_flag_badge(text: String, color: Color) -> Label:
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.add_theme_color_override("font_color", color)
+	lbl.add_theme_font_size_override("font_size", 8)
+	return lbl
 
 
 # ---------------------------------------------------------------------------
