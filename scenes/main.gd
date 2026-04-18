@@ -54,7 +54,7 @@ func _ready() -> void:
 	unit_manager.setup_castles(player_castle, enemy_castle)
 
 	# ---- 各エリアに UI ノードを配置 ----
-	_place_grid(root_vbox, grid_view)
+	_place_grid(root_vbox, grid_view, battle_manager)
 	_place_hand(root_vbox, hand_view, card_manager)
 	_place_topbar(root_vbox, battle_manager, player_castle, enemy_castle)
 	_place_right_panel(root_vbox, battle_manager)
@@ -202,11 +202,21 @@ func _make_center_info_block(battle_manager: BattleManager) -> Control:
 	_rebuild_mana_crystals(mana_row, battle_manager.mana, battle_manager.max_mana)
 	vbox.add_child(mana_row)
 
+	# 敵ターン中オーバーレイ
+	var enemy_overlay := _make_label("⏳ 相手のターン処理中…", C_TEXT3, 9)
+	enemy_overlay.name = "EnemyOverlay"
+	enemy_overlay.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	enemy_overlay.visible = false
+	vbox.add_child(enemy_overlay)
+
 	# シグナル接続
 	battle_manager.turn_changed.connect(func(player: String, turn: int) -> void:
-		phase_lbl.text = "自分のターン" if player == "player" else "相手のターン"
-		phase_lbl.add_theme_color_override("font_color", C_BLUE if player == "player" else C_RED)
+		var is_player := player == "player"
+		phase_lbl.text = "自分のターン" if is_player else "相手のターン"
+		phase_lbl.add_theme_color_override("font_color", C_BLUE if is_player else C_RED)
 		turn_lbl.text = "ターン %d" % turn
+		enemy_overlay.visible = not is_player
+		mana_row.modulate = Color.WHITE if is_player else Color(1, 1, 1, 0.3)
 		_rebuild_mana_crystals(mana_row, battle_manager.mana, battle_manager.max_mana)
 	)
 	battle_manager.mana_updated.connect(func(mana: int, max_mana: int) -> void:
@@ -230,7 +240,7 @@ func _rebuild_mana_crystals(row: HBoxContainer, mana: int, max_mana: int) -> voi
 		row.add_child(p)
 
 
-func _place_grid(vbox: VBoxContainer, grid_view: GridView) -> void:
+func _place_grid(vbox: VBoxContainer, grid_view: GridView, battle_manager: BattleManager = null) -> void:
 	# Main エリア（3カラム）を TopBar の直後に追加
 	var main_hbox := HBoxContainer.new()
 	main_hbox.name = "MainHBox"
@@ -238,14 +248,47 @@ func _place_grid(vbox: VBoxContainer, grid_view: GridView) -> void:
 	main_hbox.add_theme_constant_override("separation", 0)
 	vbox.add_child(main_hbox)
 
-	# 左サイドパネル（バトルログ — 後のステップで実装）
+	# 左サイドパネル（バトルログ）
 	var left := _make_panel(BG2, Color.TRANSPARENT, BORDER)
 	left.name = "LeftPanel"
 	left.custom_minimum_size.x = 180
 	left.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var left_label := _make_label("BATTLE LOG", C_TEXT3, 10)
-	left.add_child(_make_margin(left_label, 12))
+
+	var log_inner := VBoxContainer.new()
+	log_inner.add_theme_constant_override("separation", 4)
+	log_inner.size_flags_vertical = Control.SIZE_EXPAND_FILL
+
+	var log_title := _make_label("BATTLE LOG", C_TEXT3, 10)
+	log_inner.add_child(log_title)
+
+	var log_scroll := ScrollContainer.new()
+	log_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	log_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+
+	var log_list := VBoxContainer.new()
+	log_list.name = "LogList"
+	log_list.add_theme_constant_override("separation", 2)
+	log_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	log_scroll.add_child(log_list)
+	log_inner.add_child(log_scroll)
+
+	left.add_child(_make_margin(log_inner, 12))
 	main_hbox.add_child(left)
+
+	# battle_log シグナルはここで接続（battle_manager は引数で受け取れないため後で接続）
+	# battle_log シグナルを接続
+	if battle_manager != null:
+		battle_manager.battle_log.connect(func(msg: String) -> void:
+			var entry := _make_label(msg, C_TEXT2, 9)
+			entry.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			log_list.add_child(entry)
+			# 最大30件保持
+			if log_list.get_child_count() > 30:
+				log_list.get_child(0).queue_free()
+			# 最下部にスクロール
+			await get_tree().process_frame
+			log_scroll.scroll_vertical = int(log_scroll.get_v_scroll_bar().max_value)
+		)
 
 	# 中央（グリッド）
 	var center := CenterContainer.new()
@@ -474,21 +517,48 @@ func _make_flag_badge(text: String, color: Color) -> Label:
 # ---------------------------------------------------------------------------
 func _build_gameover_ui(battle_manager: BattleManager) -> void:
 	var overlay := ColorRect.new()
-	overlay.color   = Color(0.0, 0.0, 0.0, 0.7)
+	overlay.color   = Color(0.0, 0.0, 0.0, 0.75)
 	overlay.visible = false
 	add_child(overlay)
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-	var label := Label.new()
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_color_override("font_color", C_TEXT)
-	label.add_theme_font_size_override("font_size", 64)
-	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.add_child(label)
+	var center := VBoxContainer.new()
+	center.alignment = BoxContainer.ALIGNMENT_CENTER
+	center.add_theme_constant_override("separation", 24)
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(center)
+
+	var result_lbl := Label.new()
+	result_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_lbl.add_theme_color_override("font_color", C_TEXT)
+	result_lbl.add_theme_font_size_override("font_size", 64)
+	center.add_child(result_lbl)
+
+	var restart_btn := Button.new()
+	restart_btn.text = "もう一度プレイ"
+	restart_btn.custom_minimum_size = Vector2(200.0, 48.0)
+
+	var btn_style := StyleBoxFlat.new()
+	btn_style.bg_color     = BG3
+	btn_style.border_color = Color(C_BLUE.r, C_BLUE.g, C_BLUE.b, 0.5)
+	btn_style.set_border_width_all(1)
+	btn_style.set_corner_radius_all(8)
+	restart_btn.add_theme_stylebox_override("normal", btn_style)
+	restart_btn.add_theme_color_override("font_color", C_BLUE)
+	restart_btn.add_theme_font_size_override("font_size", 16)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	btn_row.add_child(restart_btn)
+	center.add_child(btn_row)
+
+	restart_btn.pressed.connect(func() -> void:
+		get_tree().reload_current_scene()
+	)
 
 	battle_manager.game_ended.connect(func(winner: String) -> void:
-		label.text    = "勝　利！" if winner == "player" else "敗　北…"
+		result_lbl.text = "勝　利！" if winner == "player" else "敗　北…"
+		result_lbl.add_theme_color_override("font_color", C_BLUE if winner == "player" else C_RED)
 		overlay.visible = true
 	)
 

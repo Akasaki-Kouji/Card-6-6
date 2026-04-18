@@ -8,6 +8,7 @@ signal turn_changed(current_player: String, turn: int)
 signal mana_updated(mana: int, max_mana: int)
 signal game_ended(winner: String)
 signal unit_selection_changed(unit: Unit)   # null = 選択解除
+signal battle_log(message: String)
 
 # ---------------------------------------------------------------------------
 # 依存ノード
@@ -89,6 +90,7 @@ func _start_player_turn() -> void:
 
 	turn_changed.emit(current_player, turn)
 	mana_updated.emit(mana, max_mana)
+	battle_log.emit("── ターン %d 開始 (マナ %d) ──" % [turn, mana])
 	print("BattleManager: プレイヤーターン開始 ターン%d マナ%d/%d" % [turn, mana, max_mana])
 
 
@@ -96,8 +98,11 @@ func _start_player_turn() -> void:
 # 敵ターン（簡易AI）
 # ---------------------------------------------------------------------------
 func _run_enemy_turn() -> void:
-	print("BattleManager: 敵ターン開始")
+	battle_log.emit("── 敵のターン ──")
 	unit_manager.reset_all_units()
+
+	# 敵のカード召喚AI
+	_enemy_summon()
 
 	# 敵ユニット一覧のコピーを取る（攻撃で消える可能性があるため）
 	var enemy_units: Array[Unit] = []
@@ -109,8 +114,30 @@ func _run_enemy_turn() -> void:
 		if unit.is_alive():
 			_enemy_act(unit)
 
-	print("BattleManager: 敵ターン終了")
 	_start_player_turn()
+
+
+func _enemy_summon() -> void:
+	# マナ相当として turn 数を使用（毎ターン1増加）
+	var enemy_mana: int = min(turn, 10)
+	var deployable := grid_manager.get_deployable_cells("enemy")
+	if deployable.is_empty():
+		return
+
+	# コストが払えるカードからランダムに召喚（最大1体/ターン）
+	var candidates: Array[Card] = []
+	for c: Card in [Card.make_soldier(), Card.make_heavy(), Card.make_scout()]:
+		if c.cost <= enemy_mana:
+			candidates.append(c)
+	if candidates.is_empty():
+		return
+
+	candidates.shuffle()
+	var card: Card = candidates[0]
+	var pos: Vector2i = deployable[randi() % deployable.size()]
+	var unit := unit_manager.spawn_unit("enemy", card.hp, card.attack, card.move, pos)
+	_refresh_cell(unit.position)
+	battle_log.emit("敵が %s を召喚" % card.card_name)
 
 
 func _enemy_act(unit: Unit) -> void:
@@ -244,6 +271,7 @@ func _play_card(card: Card, pos: Vector2i) -> void:
 	_refresh_cell(unit.position)
 	card_manager.remove_from_hand(card)
 	hand_view.apply_mana_filter(mana)
+	battle_log.emit("%s を %s に召喚" % [card.card_name, _coord(pos)])
 	print("BattleManager: カード使用 %s マナ残り=%d" % [card, mana])
 
 
@@ -328,6 +356,8 @@ func _execute_move(unit: Unit, to: Vector2i) -> void:
 	unit.has_moved = true
 	_refresh_cell(from)
 	_refresh_cell(to)
+	var who := "自軍" if unit.owner == "player" else "敵軍"
+	battle_log.emit("%s %s→%s" % [who, _coord(from), _coord(to)])
 	print("BattleManager: 移動 %s → %s" % [_coord(from), _coord(to)])
 
 
@@ -342,6 +372,8 @@ func _execute_attack(attacker: Unit, target_pos: Vector2i) -> void:
 # UnitManager シグナルハンドラ
 # ---------------------------------------------------------------------------
 func _on_unit_died(unit: Unit) -> void:
+	var who := "自軍" if unit.owner == "player" else "敵軍"
+	battle_log.emit("%s ユニット撃破 (%s)" % [who, _coord(unit.position)])
 	_refresh_cell(unit.position)
 
 
@@ -352,6 +384,8 @@ func _on_unit_damaged(unit: Unit) -> void:
 
 
 func _on_castle_damaged(castle: Castle) -> void:
+	var who := "自城" if castle.owner == "player" else "敵城"
+	battle_log.emit("%s にダメージ (残HP %d)" % [who, castle.hp])
 	for pos: Vector2i in castle.cells:
 		_refresh_cell(pos)
 
