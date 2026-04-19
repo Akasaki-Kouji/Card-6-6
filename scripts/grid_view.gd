@@ -241,6 +241,29 @@ func reset_highlight() -> void:
 		rect.color = Color.TRANSPARENT
 
 
+## 攻撃フラッシュ：対象セルを指定色で一瞬光らせる
+func flash_cell(pos: Vector2i, color: Color) -> void:
+	if not _hl_rects.has(pos):
+		return
+	var hl: ColorRect = _hl_rects[pos]
+	var tween := create_tween()
+	tween.tween_property(hl, "color", color, 0.05)
+	tween.tween_property(hl, "color", Color.TRANSPARENT, 0.35)
+
+
+## 召喚ポップイン：セル背景を中央からスケールアップ
+func pop_in_cell(pos: Vector2i) -> void:
+	if not _bg_panels.has(pos):
+		return
+	var panel: Panel = _bg_panels[pos]
+	panel.pivot_offset = Vector2(CELL_W * 0.5, CELL_H * 0.5)
+	panel.scale = Vector2(0.4, 0.4)
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_BACK)
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_property(panel, "scale", Vector2.ONE, 0.3)
+
+
 # ---------------------------------------------------------------------------
 # 後方互換 API（BattleManager から呼ばれる）
 # ---------------------------------------------------------------------------

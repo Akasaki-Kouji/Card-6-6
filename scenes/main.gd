@@ -70,6 +70,9 @@ func _ready() -> void:
 	# ---- ゲームオーバーUI ----
 	_build_gameover_ui(battle_manager)
 
+	# ---- ターン通知オーバーレイ ----
+	_build_turn_overlay(battle_manager)
+
 	# ---- ゲーム開始（最初のチャージフェーズ）----
 	battle_manager.begin_first_turn()
 
@@ -417,7 +420,7 @@ func _place_right_panel(vbox: VBoxContainer, battle_manager: BattleManager) -> v
 	var unit_section := VBoxContainer.new()
 	unit_section.add_theme_constant_override("separation", 6)
 
-	var unit_title := _make_label("UNIT INFO", C_TEXT3, 10)
+	var unit_title := _make_label("UNIT INFO", C_TEXT3, 12)
 	unit_section.add_child(unit_title)
 
 	var no_unit_lbl := _make_label("選択なし", C_TEXT3, 10)
@@ -596,10 +599,10 @@ func _rebuild_mana_pool_display_panel(row: HBoxContainer, pool: Dictionary) -> v
 
 func _make_unit_detail_block() -> VBoxContainer:
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 4)
+	vbox.add_theme_constant_override("separation", 8)
 
 	# オーナーバッジ
-	var owner_lbl := _make_label("", C_BLUE, 11)
+	var owner_lbl := _make_label("", C_BLUE, 15)
 	owner_lbl.name = "OwnerLabel"
 	owner_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(owner_lbl)
@@ -611,21 +614,24 @@ func _make_unit_detail_block() -> VBoxContainer:
 	sep.size_flags_horizontal  = Control.SIZE_EXPAND_FILL
 	vbox.add_child(sep)
 
-	# HP バー
-	var hp_row := _make_hbox(6)
-	var hp_key := _make_label("HP", C_TEXT3, 9)
-	var hp_val := _make_label("", C_BLUE, 11)
+	# HP 行
+	var hp_row := _make_hbox(8)
+	var hp_key := _make_label("HP", C_TEXT3, 12)
+	var hp_val := _make_label("", C_BLUE, 16)
 	hp_val.name = "HpValue"
+	hp_val.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hp_val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	hp_row.add_child(hp_key)
 	hp_row.add_child(hp_val)
 	vbox.add_child(hp_row)
 
+	# HP バー
 	var hp_bar_bg := Panel.new()
-	hp_bar_bg.custom_minimum_size = Vector2(0.0, 5.0)
+	hp_bar_bg.custom_minimum_size = Vector2(0.0, 10.0)
 	hp_bar_bg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var bg_s := StyleBoxFlat.new()
 	bg_s.bg_color = Color(C_BLUE.r, C_BLUE.g, C_BLUE.b, 0.15)
-	bg_s.set_corner_radius_all(2)
+	bg_s.set_corner_radius_all(4)
 	hp_bar_bg.add_theme_stylebox_override("panel", bg_s)
 	var hp_fill := ColorRect.new()
 	hp_fill.name  = "HpFill"
@@ -640,16 +646,18 @@ func _make_unit_detail_block() -> VBoxContainer:
 
 	# ATK / MOV
 	for pair: Array in [["ATK", "AtkValue", C_RED], ["MOV", "MovValue", C_TEXT2]]:
-		var row := _make_hbox(6)
-		var key := _make_label(pair[0], C_TEXT3, 9)
-		var val := _make_label("", pair[2], 11)
+		var row := _make_hbox(8)
+		var key := _make_label(pair[0], C_TEXT3, 12)
+		var val := _make_label("", pair[2], 16)
 		val.name = pair[1]
+		val.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		row.add_child(key)
 		row.add_child(val)
 		vbox.add_child(row)
 
 	# 移動/攻撃フラグ
-	var flags_row := _make_hbox(4)
+	var flags_row := _make_hbox(6)
 	flags_row.name = "FlagsRow"
 	vbox.add_child(flags_row)
 
@@ -693,8 +701,32 @@ func _make_flag_badge(text: String, color: Color) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.add_theme_color_override("font_color", color)
-	lbl.add_theme_font_size_override("font_size", 8)
+	lbl.add_theme_font_size_override("font_size", 11)
 	return lbl
+
+
+# ---------------------------------------------------------------------------
+# ターン通知オーバーレイ
+# ---------------------------------------------------------------------------
+func _build_turn_overlay(battle_manager: BattleManager) -> void:
+	var lbl := Label.new()
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 52)
+	lbl.modulate.a = 0.0
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(lbl)
+
+	battle_manager.turn_changed.connect(func(player: String, _turn: int) -> void:
+		var is_player := player == "player"
+		lbl.text = "自分のターン" if is_player else "相手のターン"
+		lbl.add_theme_color_override("font_color", C_BLUE if is_player else C_RED)
+		var tween := create_tween()
+		tween.tween_property(lbl, "modulate:a", 1.0, 0.25)
+		tween.tween_interval(0.7)
+		tween.tween_property(lbl, "modulate:a", 0.0, 0.4)
+	)
 
 
 # ---------------------------------------------------------------------------

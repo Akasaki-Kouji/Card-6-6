@@ -176,6 +176,7 @@ func _enemy_summon() -> void:
 	_consume_mana(card, enemy_mana_pool)
 	var unit := unit_manager.spawn_unit("enemy", card.hp, card.attack, card.move, pos)
 	_refresh_cell(unit.position)
+	grid_view.pop_in_cell(unit.position)
 	battle_log.emit("敵が %s を召喚" % card.card_name)
 
 
@@ -298,6 +299,7 @@ func _play_card(card: Card, pos: Vector2i) -> void:
 	mana_pool_changed.emit(mana_pool)
 	var unit := unit_manager.spawn_unit("player", card.hp, card.attack, card.move, pos)
 	_refresh_cell(unit.position)
+	grid_view.pop_in_cell(unit.position)
 	card_manager.remove_from_hand(card)
 	hand_view.apply_mana_filter(mana_pool)
 	battle_log.emit("%s を %s に召喚" % [card.card_name, _coord(pos)])
@@ -375,6 +377,7 @@ func _execute_move(unit: Unit, to: Vector2i) -> void:
 func _execute_attack(attacker: Unit, target_pos: Vector2i) -> void:
 	if attacker.has_attacked:
 		return
+	grid_view.flash_cell(target_pos, Color(1.0, 0.2, 0.2, 0.85))
 	unit_manager.attack(attacker, target_pos)
 
 
